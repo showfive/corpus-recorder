@@ -1,0 +1,23 @@
+{
+  "appId": "com.example.corpus-recorder",
+  "productName": "Corpus Recorder",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "icon": "resources/icon.icns"
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "resources/icon.ico"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "resources/icon.png"
+  }
+} 
