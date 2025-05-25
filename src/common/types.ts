@@ -9,10 +9,15 @@ export interface Recording {
 }
 
 // コーパステキストに関する型定義
+export type RubySegment = string | { base: string; ruby: string };
+
 export interface CorpusText {
   id: string
   index: number
-  text: string
+  text: string // プレーンテキスト、または読み仮名注釈付きの原文
+  label?: string // コーパス文ラベル (ITA/Rohanフォーマット用)
+  reading?: string // カタカナの読み (ITA/Rohanフォーマット用)
+  rubyText?: RubySegment[]; // ルビ情報を含む解析済みテキスト (Rohanフォーマット用)
   recordings?: Recording[]
 }
 

@@ -1,6 +1,6 @@
 import { promises as fsPromises } from 'fs'
 import path from 'path'
-import { CorpusText } from '../../common/types'
+import { CorpusText, RubySegment } from '../../common/types'
 
 // テキストファイルの読み込み結果
 export interface TextFileResult {
@@ -13,9 +13,8 @@ export interface TextFileResult {
 // サポートするテキストファイルのフォーマット
 export enum TextFileFormat {
   PLAIN_TEXT = 'plain-text',
-  NUMBERED_LIST = 'numbered-list',
-  CSV = 'csv',
-  TSV = 'tsv'
+  ITA_FORMAT = 'ita-format', // ITAコーパス形式
+  ROHAN_FORMAT = 'rohan-format' // Rohanコーパス形式
 }
 
 // フォーマット検出の結果
@@ -34,22 +33,16 @@ function detectFormat(content: string): FormatDetectionResult {
     return { format: TextFileFormat.PLAIN_TEXT, confidence: 1.0 }
   }
 
-  // CSV形式の検出
-  const csvMatches = lines.filter(line => line.includes(',') && line.split(',').length > 1)
-  if (csvMatches.length > lines.length * 0.8) {
-    return { format: TextFileFormat.CSV, confidence: 0.9 }
+  // Rohanコーパス形式の検出 (ROHAN4600_xxxx:text(ruby),reading)
+  const rohanMatches = lines.filter(line => /^ROHAN4600_\d+:[^:]+\(.+?\)[^,]+,[ァ-ヴー]+$/.test(line))
+  if (rohanMatches.length > lines.length * 0.8) {
+    return { format: TextFileFormat.ROHAN_FORMAT, confidence: 0.9 }
   }
 
-  // TSV形式の検出
-  const tsvMatches = lines.filter(line => line.includes('\t') && line.split('\t').length > 1)
-  if (tsvMatches.length > lines.length * 0.8) {
-    return { format: TextFileFormat.TSV, confidence: 0.9 }
-  }
-
-  // 番号付きリスト形式の検出（1. 2. 3. または 1) 2) 3) のパターン）
-  const numberedMatches = lines.filter(line => /^\s*\d+[.)]/.test(line))
-  if (numberedMatches.length > lines.length * 0.7) {
-    return { format: TextFileFormat.NUMBERED_LIST, confidence: 0.8 }
+  // ITAコーパス形式の検出
+  const itaMatches = lines.filter(line => /^[^:]+:[^,]+,[ァ-ヴー]+$/.test(line))
+  if (itaMatches.length > lines.length * 0.8) {
+    return { format: TextFileFormat.ITA_FORMAT, confidence: 0.9 }
   }
 
   // デフォルトはプレーンテキスト
@@ -69,66 +62,74 @@ function parsePlainText(content: string): CorpusText[] {
 }
 
 /**
- * 番号付きリスト形式を解析する
+ * ITAコーパス形式を解析する
  */
-function parseNumberedList(content: string): CorpusText[] {
+function parseItaFormat(content: string): CorpusText[] {
   const lines = content.split('\n').filter(line => line.trim())
   return lines.map((line, index) => {
-    // 番号部分を除去
-    const text = line.replace(/^\s*\d+[.)]\s*/, '').trim()
+    const parts = line.split(':')
+    const label = parts[0]
+    const textAndReading = parts[1].split(',')
+    const text = textAndReading[0]
+    const reading = textAndReading[1]
     return {
       id: `text-${index}`,
       index,
-      text
+      text,
+      label,
+      reading
     }
   })
 }
 
 /**
- * CSV形式を解析する
+ * Rohanコーパス形式を解析する
  */
-function parseCSV(content: string): CorpusText[] {
-  const lines = content.split('\n').filter(line => line.trim())
+function parseRohanFormat(content: string): CorpusText[] {
+  const lines = content.split('\n').filter(line => line.trim());
   return lines.map((line, index) => {
-    const columns = line.split(',').map(col => col.trim().replace(/^["']|["']$/g, ''))
-    // 最初のカラムをテキストとして使用
-    const text = columns[0] || ''
+    const parts = line.split(':');
+    const label = parts[0];
+    const textAndReading = parts[1].split(',');
+    const rawText = textAndReading[0];
+    const reading = textAndReading[1];
+
+    const rubyText: RubySegment[] = [];
+    let lastIndex = 0;
+    const regex = /(.*?)\(（(.*?)\)）/g;
+    let match;
+    while ((match = regex.exec(rawText)) !== null) {
+      if (match[1]) {
+        rubyText.push(match[1]);
+      }
+      rubyText.push({ base: match[2], ruby: match[3] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < rawText.length) {
+      rubyText.push(rawText.substring(lastIndex));
+    }
+
     return {
       id: `text-${index}`,
       index,
-      text
-    }
-  })
+      text: rawText, // 元のルビ注釈付きテキストも保持
+      label,
+      reading,
+      rubyText
+    };
+  });
 }
 
-/**
- * TSV形式を解析する
- */
-function parseTSV(content: string): CorpusText[] {
-  const lines = content.split('\n').filter(line => line.trim())
-  return lines.map((line, index) => {
-    const columns = line.split('\t').map(col => col.trim())
-    // 最初のカラムをテキストとして使用
-    const text = columns[0] || ''
-    return {
-      id: `text-${index}`,
-      index,
-      text
-    }
-  })
-}
 
 /**
  * フォーマットに応じてテキストを解析する
  */
 function parseTextContent(content: string, format: TextFileFormat): CorpusText[] {
   switch (format) {
-    case TextFileFormat.NUMBERED_LIST:
-      return parseNumberedList(content)
-    case TextFileFormat.CSV:
-      return parseCSV(content)
-    case TextFileFormat.TSV:
-      return parseTSV(content)
+    case TextFileFormat.ROHAN_FORMAT:
+      return parseRohanFormat(content)
+    case TextFileFormat.ITA_FORMAT:
+      return parseItaFormat(content)
     case TextFileFormat.PLAIN_TEXT:
     default:
       return parsePlainText(content)
@@ -159,21 +160,20 @@ export async function readAndParseTextFile(filePath: string): Promise<TextFileRe
  * サポートされているファイル拡張子を取得する
  */
 export function getSupportedExtensions(): string[] {
-  return ['txt', 'csv', 'tsv']
+  return ['txt'] // .txt のみをサポート
 }
 
 /**
  * ファイル拡張子からフォーマットを推測する
+ * 注意: この関数は拡張子のみに基づいて推測するため、.txt ファイルの正確なフォーマット
+ * (PLAIN_TEXT, ITA_FORMAT, ROHAN_FORMATなど) を特定することはできません。
+ * 正確なフォーマット判定はファイル内容を読み取った後に行われます。
  */
 export function guessFormatFromExtension(filePath: string): TextFileFormat {
   const ext = path.extname(filePath).toLowerCase()
   switch (ext) {
-    case '.csv':
-      return TextFileFormat.CSV
-    case '.tsv':
-      return TextFileFormat.TSV
     case '.txt':
     default:
-      return TextFileFormat.PLAIN_TEXT
+      return TextFileFormat.PLAIN_TEXT // .txt の場合はデフォルトで PLAIN_TEXT と推測
   }
 }
