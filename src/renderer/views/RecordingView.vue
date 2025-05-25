@@ -56,12 +56,14 @@
         <el-divider>録音済み音声</el-divider>
         <el-space direction="vertical" :size="10" style="width: 100%">
           <div v-for="recording in currentRecordings" :key="recording.id" class="recording-item">
-            <el-card shadow="hover">
-              <el-row align="middle">
+            <el-card shadow="hover">              <el-row align="middle">
                 <el-col :span="16">
                   <span>{{ recording.fileName }}</span>
                   <el-tag size="small" style="margin-left: 10px">
                     {{ formatDuration(recording.duration) }}
+                  </el-tag>
+                  <el-tag size="small" type="info" style="margin-left: 5px">
+                    Take {{ recording.takeNumber }}
                   </el-tag>
                 </el-col>
                 <el-col :span="8" style="text-align: right">
@@ -89,7 +91,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TextDisplay from '../components/TextDisplay.vue'
 import RecordingControls from '../components/RecordingControls.vue'
 import NavigationControls from '../components/NavigationControls.vue'
-import { Recording, CorpusText, RecordingState, TextFileFormat } from '../../common/types'
+import { Recording, CorpusText, RecordingState, TextFileFormat, AudioFileMetadata } from '../../common/types'
 
 // 状態管理
 const recordingDirectory = ref<string>('')
@@ -113,6 +115,26 @@ const currentRecordings = computed(() => {
   const currentTextId = texts.value[currentTextIndex.value]?.id
   return recordings.value.filter(r => r.textId === currentTextId)
 })
+
+// ファイル名生成
+const generateFileName = (currentText: CorpusText, takeNumber: number): string => {
+  if (currentFileFormat.value === TextFileFormat.ITA_FORMAT || 
+      currentFileFormat.value === TextFileFormat.ROHAN_FORMAT) {
+    // ITA/Rohanフォーマットの場合、labelを使用
+    const baseFileName = currentText.label || currentText.id
+    return takeNumber > 1 ? `${baseFileName}_take${takeNumber}.wav` : `${baseFileName}.wav`
+  } else {
+    // プレーンテキストの場合、4桁0パディングの番号を使用
+    const paddedNumber = (currentText.index + 1).toString().padStart(4, '0')
+    return takeNumber > 1 ? `anycorpus_${paddedNumber}_take${takeNumber}.wav` : `anycorpus_${paddedNumber}.wav`
+  }
+}
+
+// 次のtake数を計算
+const getNextTakeNumber = (textId: string): number => {
+  const existingRecordings = recordings.value.filter(r => r.textId === textId)
+  return existingRecordings.length + 1
+}
 
 // ディレクトリ選択
 const selectDirectory = async () => {
@@ -161,11 +183,10 @@ const loadTextFile = async () => {
         currentTextIndex.value = 0
         currentFileFormat.value = result.format
         console.log('[RecordingView] currentFileFormat set to:', currentFileFormat.value); // ★デバッグログ追加
-        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${currentFileFormat.value})`)
-      } else if (result.content) { 
+        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${currentFileFormat.value})`)      } else if (result.content) { 
         console.log('[RecordingView] Text file loaded as plain text (fallback).'); // ★デバッグログ追加
-        const lines = result.content.split('\n').filter(line => line.trim())
-        texts.value = lines.map((text, index) => ({
+        const lines = result.content.split('\n').filter((line: string) => line.trim())
+        texts.value = lines.map((text: string, index: number) => ({
           id: `text-${index}`,
           index,
           text: text.trim(),
@@ -215,11 +236,19 @@ const stopRecording = async (audioData: { arrayBuffer: ArrayBuffer; duration: nu
 
     recordingState.value = RecordingState.PROCESSING
     
-    const currentTextId = texts.value[currentTextIndex.value].id
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const fileName = `${currentTextId}_${timestamp}.wav`
+    const currentText = texts.value[currentTextIndex.value]
+    const currentTextId = currentText.id
+    const takeNumber = getNextTakeNumber(currentTextId)
+    const fileName = generateFileName(currentText, takeNumber)
     
-    const result = await window.electronAPI.saveAudioFile(audioData.arrayBuffer, fileName)
+    // メタデータを準備
+    const metadata: AudioFileMetadata = {
+      text: currentText.text,
+      takeNumber,
+      fileName
+    }
+    
+    const result = await window.electronAPI.saveAudioFileWithMetadata(audioData.arrayBuffer, metadata)
     
     if (result.success && result.filePath) {
       const newRecording: Recording = {
@@ -228,7 +257,9 @@ const stopRecording = async (audioData: { arrayBuffer: ArrayBuffer; duration: nu
         fileName,
         filePath: result.filePath,
         duration: audioData.duration,
-        createdAt: new Date()
+        createdAt: new Date(),
+        takeNumber,
+        text: currentText.text
       }
       recordings.value.push(newRecording)
       ElMessage.success('録音を保存しました')

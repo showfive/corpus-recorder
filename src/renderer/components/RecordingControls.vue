@@ -228,10 +228,10 @@ const drawWaveform = () => {
   const canvasCtx = canvas.getContext('2d')!
   const bufferLength = analyser.frequencyBinCount
   const dataArray = new Uint8Array(bufferLength)
-  
-  const draw = () => {
+    const draw = () => {
     animationId = requestAnimationFrame(draw)
     
+    if (!analyser) return
     analyser.getByteTimeDomainData(dataArray)
     
     canvasCtx.fillStyle = 'rgb(245, 247, 250)'

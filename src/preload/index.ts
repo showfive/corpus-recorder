@@ -6,6 +6,7 @@ console.log('=== Preload script started ===')
 const IPC_CHANNELS = {
   SELECT_DIRECTORY: 'select-directory',
   SAVE_AUDIO_FILE: 'save-audio-file',
+  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
   DELETE_AUDIO_FILE: 'delete-audio-file',
   READ_TEXT_FILE: 'read-text-file',
   GET_SETTINGS: 'get-settings',
@@ -19,11 +20,16 @@ const electronAPI = {
     console.log('selectDirectory called')
     return ipcRenderer.invoke(IPC_CHANNELS.SELECT_DIRECTORY)
   },
-  
-  // 音声ファイルの保存
+    // 音声ファイルの保存
   saveAudioFile: (arrayBuffer: ArrayBuffer, fileName: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
     console.log('saveAudioFile called:', fileName)
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE, arrayBuffer, fileName)
+  },
+  
+  // メタデータ付き音声ファイルの保存
+  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: any): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    console.log('saveAudioFileWithMetadata called:', metadata.fileName)
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE_WITH_METADATA, arrayBuffer, metadata)
   },
   
   // 音声ファイルの削除

@@ -5,6 +5,8 @@ import { promises as fsPromises } from 'fs'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
 import { readAndParseTextFile, getSupportedExtensions } from './services/textFileService'
+import { AudioFileMetadata } from '../common/types'
+import { addMetadataToWav } from './utils/wavMetadata'
 
 // ESモジュールで__dirnameを取得
 const __filename = fileURLToPath(import.meta.url)
@@ -14,6 +16,7 @@ const __dirname = path.dirname(__filename)
 const IPC_CHANNELS = {
   SELECT_DIRECTORY: 'select-directory',
   SAVE_AUDIO_FILE: 'save-audio-file',
+  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
   DELETE_AUDIO_FILE: 'delete-audio-file',
   READ_TEXT_FILE: 'read-text-file',
   GET_SETTINGS: 'get-settings',
@@ -181,6 +184,30 @@ ipcMain.handle(IPC_CHANNELS.SAVE_AUDIO_FILE, async (_, arrayBuffer: ArrayBuffer,
     return { success: true, filePath }
   } catch (error) {
     console.error('Failed to save audio file:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }  }
+})
+
+// メタデータ付き音声ファイルの保存
+ipcMain.handle(IPC_CHANNELS.SAVE_AUDIO_FILE_WITH_METADATA, async (_, arrayBuffer: ArrayBuffer, metadata: AudioFileMetadata) => {
+  try {
+    const recordingDir = store.get('recordingDirectory')
+    
+    // ディレクトリが存在しない場合は作成
+    if (!fs.existsSync(recordingDir)) {
+      await fsPromises.mkdir(recordingDir, { recursive: true })
+    }
+    
+    // WAVファイルにメタデータを追加
+    const wavWithMetadata = addMetadataToWav(arrayBuffer, metadata)
+    
+    const filePath = path.join(recordingDir, metadata.fileName)
+    const buffer = Buffer.from(wavWithMetadata)
+    
+    await fsPromises.writeFile(filePath, buffer)
+    
+    return { success: true, filePath }
+  } catch (error) {
+    console.error('Failed to save audio file with metadata:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 })

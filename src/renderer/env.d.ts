@@ -10,8 +10,9 @@ declare module '*.vue' {
 interface ElectronAPI {
   selectDirectory: () => Promise<string | null>
   saveAudioFile: (arrayBuffer: ArrayBuffer, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: import('../common/types').AudioFileMetadata) => Promise<{ success: boolean; filePath?: string; error?: string }>
   deleteAudioFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
-  readTextFile: () => Promise<{ filePath: string; content: string } | null>
+  readTextFile: () => Promise<{ filePath: string; content: string; texts?: any[]; format?: string } | null>
   getSettings: () => Promise<any>
   updateSettings: (settings: any) => Promise<any>
 }
@@ -20,4 +21,4 @@ declare global {
   interface Window {
     electronAPI: ElectronAPI
   }
-} 
+}

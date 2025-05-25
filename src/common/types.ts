@@ -6,6 +6,8 @@ export interface Recording {
   filePath: string
   duration: number
   createdAt: Date
+  takeNumber: number // take数を追加
+  text: string // 読み上げ文章を追加
 }
 
 // コーパステキストに関する型定義
@@ -37,11 +39,19 @@ export interface AppSettings {
   lastTextIndex?: number
 }
 
+// 音声ファイル保存時のメタデータ
+export interface AudioFileMetadata {
+  text: string
+  takeNumber: number
+  fileName: string
+}
+
 // IPC通信のイベント名を定義
 export const IPC_CHANNELS = {
   // ファイル操作
   SELECT_DIRECTORY: 'select-directory',
   SAVE_AUDIO_FILE: 'save-audio-file',
+  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
   DELETE_AUDIO_FILE: 'delete-audio-file',
   READ_TEXT_FILE: 'read-text-file',
   
