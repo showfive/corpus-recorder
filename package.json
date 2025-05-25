@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "音声合成用の音声収録デスクトップアプリケーション",
   "main": "dist-electron/index.js",
-  "type": "module",  "scripts": {
+  "type": "module",
+  "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && npm run copy-preload && electron-builder",
     "build-skip-tsc": "vite build && npm run copy-preload && electron-builder",
@@ -38,6 +39,7 @@
     "@element-plus/icons-vue": "^2.3.1",
     "electron-store": "^10.0.1",
     "element-plus": "^2.9.11",
+    "iconv-lite": "^0.6.3",
     "node-wav": "^0.0.2"
   }
 }

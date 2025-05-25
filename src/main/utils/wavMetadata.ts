@@ -1,21 +1,37 @@
 import { AudioFileMetadata } from '../../common/types'
+import iconv from 'iconv-lite';
 
 /**
  * WAVファイルにメタデータ（INFOチャンク）を追加する
+ * Windowsエクスプローラーで表示されるように最適化
  */
 export function addMetadataToWav(wavBuffer: ArrayBuffer, metadata: AudioFileMetadata): ArrayBuffer {
   const originalView = new DataView(wavBuffer)
+    // RIFFヘッダーの検証
+  const riffSignature = String.fromCharCode(
+    originalView.getUint8(0), originalView.getUint8(1), 
+    originalView.getUint8(2), originalView.getUint8(3)
+  )
+  if (riffSignature !== 'RIFF') {
+    throw new Error('Invalid WAV file: RIFF signature not found')
+  }
   
   // メタデータをINFOチャンクとして準備
-  const textBytes = encodeText(metadata.text)
-  const takeBytes = encodeText(`Take ${metadata.takeNumber}`)
-  const filenameBytes = encodeText(metadata.fileName)
+  const titleBytes = encodeText(metadata.text) // タイトル = 読み上げ文章
+  const trackBytes = encodeText(`${metadata.takeNumber}`) // トラック番号 = take数
+  const albumBytes = encodeText('音声コーパス録音') // アルバム名（日本語）
+  const artistBytes = encodeText('音声コーパス') // アーティスト名（日本語）
+  const commentBytes = encodeText(`録音ファイル: ${metadata.fileName} | Take: ${metadata.takeNumber}`) // 詳細コメント
+  const softwareBytes = encodeText('Corpus Recorder v1.0') // ソフトウェア名
   
   // INFOサブチャンクのサイズを計算
   const infoSubchunks = [
-    { id: 'INAM', data: filenameBytes }, // タイトル（ファイル名）
-    { id: 'ICMT', data: textBytes },     // コメント（読み上げ文章）
-    { id: 'ITRK', data: takeBytes }      // トラック番号（take数）
+    { id: 'INAM', data: titleBytes },    // タイトル（読み上げ文章）
+    { id: 'IART', data: artistBytes },   // アーティスト名  
+    { id: 'IALB', data: albumBytes },    // アルバム名
+    { id: 'ITRK', data: trackBytes },    // トラック番号（take数）
+    { id: 'ICMT', data: commentBytes },  // コメント（ファイル名）
+    { id: 'ISFT', data: softwareBytes }  // ソフトウェア名
   ]
   
   // 各サブチャンクのサイズ計算（ID4バイト + サイズ4バイト + データ + パディング）
@@ -25,29 +41,23 @@ export function addMetadataToWav(wavBuffer: ArrayBuffer, metadata: AudioFileMeta
     const paddedSize = dataSize + (dataSize % 2) // 2バイト境界にアライメント
     infoDataSize += 4 + 4 + paddedSize // ID + size + data
   }
-  
-  // LISTチャンクのサイズ（'INFO'の4バイト + サブチャンクのデータ）
+    // LISTチャンクのサイズ（'INFO'の4バイト + サブチャンクのデータ）
   const listChunkSize = 4 + infoDataSize
   
   // 新しいWAVファイルのサイズ
   const newFileSize = wavBuffer.byteLength + 8 + listChunkSize // LIST header + chunk
   const newBuffer = new ArrayBuffer(newFileSize)
   const newView = new DataView(newBuffer)
-  
-  let writePos = 0
-  
-  // 元のWAVヘッダーをコピー（最初の8バイト：'RIFF' + ファイルサイズ）
-  // RIFFヘッダー
-  newView.setUint32(writePos, originalView.getUint32(0, false), false) // 'RIFF'
-  writePos += 4
-  newView.setUint32(writePos, newFileSize - 8, true) // 新しいファイルサイズ
-  writePos += 4
-  
-  // 元のデータの残りをコピー（WAVEヘッダー以降）
-  const remainingOriginalData = new Uint8Array(wavBuffer, 8)
-  const newDataArray = new Uint8Array(newBuffer)
-  newDataArray.set(remainingOriginalData, writePos)
-  writePos += remainingOriginalData.length
+
+  // 元のWAVファイル全体をまずコピー
+  const originalArray = new Uint8Array(wavBuffer)
+  const newArray = new Uint8Array(newBuffer)
+  newArray.set(originalArray, 0)
+
+  // RIFFファイルサイズを更新（新しいファイルサイズ - 8）
+  newView.setUint32(4, newFileSize - 8, true)
+  // ファイルの末尾にLISTチャンクを追加
+  let writePos = wavBuffer.byteLength
   
   // LISTチャンクを追加
   newView.setUint32(writePos, 0x5453494C, false) // 'LIST'
@@ -86,14 +96,16 @@ export function addMetadataToWav(wavBuffer: ArrayBuffer, metadata: AudioFileMeta
 }
 
 /**
- * 文字列をUTF-8バイト配列にエンコード（null終端付き）
+ * 文字列をWindows互換のバイト配列にエンコード（CP1252 + null終端）
+ * Windowsエクスプローラーでの表示互換性を向上させる
  */
 function encodeText(text: string): Uint8Array {
-  const encoder = new TextEncoder()
-  const encoded = encoder.encode(text)
+  // Shift_JIS (Windows-31J) でエンコード  -> UTF-8 に変更
+  const buffer = iconv.encode(text, 'UTF-8');
+  
   // null終端を追加
-  const withNull = new Uint8Array(encoded.length + 1)
-  withNull.set(encoded)
-  withNull[encoded.length] = 0
-  return withNull
+  const withNull = new Uint8Array(buffer.length + 1);
+  withNull.set(new Uint8Array(buffer));
+  withNull[buffer.length] = 0;
+  return withNull;
 }
