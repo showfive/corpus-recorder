@@ -16,6 +16,14 @@ export interface CorpusText {
   recordings?: Recording[]
 }
 
+// テキストファイル読み込み結果
+export interface TextFileReadResult {
+  filePath: string
+  content: string
+  texts: CorpusText[]
+  format: string
+}
+
 // アプリケーション設定に関する型定義
 export interface AppSettings {
   recordingDirectory: string
@@ -45,4 +53,4 @@ export enum RecordingState {
   RECORDING = 'recording',
   PAUSED = 'paused',
   PROCESSING = 'processing'
-} 
+}

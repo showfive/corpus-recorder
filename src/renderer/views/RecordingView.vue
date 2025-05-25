@@ -143,14 +143,27 @@ const loadTextFile = async () => {
 
     const result = await window.electronAPI.readTextFile()
     if (result) {
-      const lines = result.content.split('\n').filter(line => line.trim())
-      texts.value = lines.map((text, index) => ({
-        id: `text-${index}`,
-        index,
-        text: text.trim()
-      }))
-      currentTextIndex.value = 0
-      ElMessage.success(`${texts.value.length}件のテキストを読み込みました`)
+      if (result.error) {
+        ElMessage.error(`テキストファイルの読み込みに失敗しました: ${result.error}`)
+        return
+      }
+      
+      // 新しいフォーマット対応の処理
+      if (result.texts) {
+        texts.value = result.texts
+        currentTextIndex.value = 0
+        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${result.format})`)
+      } else {
+        // 旧フォーマットとの互換性のための処理
+        const lines = result.content.split('\n').filter(line => line.trim())
+        texts.value = lines.map((text, index) => ({
+          id: `text-${index}`,
+          index,
+          text: text.trim()
+        }))
+        currentTextIndex.value = 0
+        ElMessage.success(`${texts.value.length}件のテキストを読み込みました`)
+      }
     }
   } catch (error) {
     console.error('Failed to load text file:', error)

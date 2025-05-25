@@ -4,6 +4,7 @@ import fs from 'fs'
 import { promises as fsPromises } from 'fs'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
+import { readAndParseTextFile, getSupportedExtensions } from './services/textFileService'
 
 // ESモジュールで__dirnameを取得
 const __filename = fileURLToPath(import.meta.url)
@@ -200,15 +201,20 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openFile'],
     filters: [
-      { name: 'Text Files', extensions: ['txt', 'csv'] }
+      { name: 'Text Files', extensions: getSupportedExtensions() }
     ]
   })
   
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0]
-    const content = await fsPromises.readFile(filePath, 'utf-8')
-    store.set('lastOpenedTextFile', filePath)
-    return { filePath, content }
+    try {
+      const parseResult = await readAndParseTextFile(filePath)
+      store.set('lastOpenedTextFile', filePath)
+      return parseResult
+    } catch (error) {
+      console.error('Failed to read and parse text file:', error)
+      return { error: error instanceof Error ? error.message : 'Unknown error' }
+    }
   }
   
   return null
