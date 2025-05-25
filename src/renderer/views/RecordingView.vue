@@ -30,9 +30,10 @@
     <el-main class="main-content">
       <!-- テキスト表示エリア -->
       <TextDisplay 
-        :text="currentText"
+        :currentText="currentTextObject"
         :textIndex="currentTextIndex"
         :totalTexts="texts.length"
+        :fileFormat="currentFileFormat"
       />
 
       <!-- 録音コントロール -->
@@ -88,7 +89,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TextDisplay from '../components/TextDisplay.vue'
 import RecordingControls from '../components/RecordingControls.vue'
 import NavigationControls from '../components/NavigationControls.vue'
-import { Recording, CorpusText, RecordingState } from '../../common/types'
+import { Recording, CorpusText, RecordingState, TextFileFormat } from '../../common/types'
 
 // 状態管理
 const recordingDirectory = ref<string>('')
@@ -96,11 +97,14 @@ const texts = ref<CorpusText[]>([])
 const currentTextIndex = ref<number>(0)
 const recordingState = ref<RecordingState>(RecordingState.IDLE)
 const recordings = ref<Recording[]>([])
+const currentFileFormat = ref<TextFileFormat | null>(null)
 
-// 現在のテキスト
-const currentText = computed(() => {
-  if (texts.value.length === 0) return ''
-  return texts.value[currentTextIndex.value]?.text || ''
+// 現在のテキスト (CorpusText オブジェクト全体を返すように変更)
+const currentTextObject = computed(() => {
+  if (texts.value.length === 0 || currentTextIndex.value < 0 || currentTextIndex.value >= texts.value.length) {
+    return null
+  }
+  return texts.value[currentTextIndex.value]
 })
 
 // 現在のテキストに関連する録音
@@ -142,32 +146,47 @@ const loadTextFile = async () => {
     }
 
     const result = await window.electronAPI.readTextFile()
+    console.log('[RecordingView] window.electronAPI.readTextFile result:', JSON.stringify(result, null, 2)); // ★デバッグログ追加
+
     if (result) {
       if (result.error) {
         ElMessage.error(`テキストファイルの読み込みに失敗しました: ${result.error}`)
+        currentFileFormat.value = null
         return
       }
       
-      // 新しいフォーマット対応の処理
-      if (result.texts) {
+      if (result.texts && result.format) {
+        console.log('[RecordingView] Text file loaded. Format from main process:', result.format); // ★デバッグログ追加
         texts.value = result.texts
         currentTextIndex.value = 0
-        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${result.format})`)
-      } else {
-        // 旧フォーマットとの互換性のための処理
+        currentFileFormat.value = result.format
+        console.log('[RecordingView] currentFileFormat set to:', currentFileFormat.value); // ★デバッグログ追加
+        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${currentFileFormat.value})`)
+      } else if (result.content) { 
+        console.log('[RecordingView] Text file loaded as plain text (fallback).'); // ★デバッグログ追加
         const lines = result.content.split('\n').filter(line => line.trim())
         texts.value = lines.map((text, index) => ({
           id: `text-${index}`,
           index,
-          text: text.trim()
+          text: text.trim(),
         }))
         currentTextIndex.value = 0
-        ElMessage.success(`${texts.value.length}件のテキストを読み込みました`)
+        currentFileFormat.value = TextFileFormat.PLAIN_TEXT
+        console.log('[RecordingView] currentFileFormat set to (fallback):', currentFileFormat.value); // ★デバッグログ追加
+        ElMessage.success(`${texts.value.length}件のテキストを読み込みました (フォーマット: ${currentFileFormat.value})`)
+      } else {
+        ElMessage.error('テキストファイルの解析に失敗しました: 不明な形式または空のファイルです。')
+        texts.value = []
+        currentTextIndex.value = 0
+        currentFileFormat.value = null
       }
     }
   } catch (error) {
     console.error('Failed to load text file:', error)
     ElMessage.error('テキストファイルの読み込みに失敗しました')
+    texts.value = []
+    currentTextIndex.value = 0
+    currentFileFormat.value = null
   }
 }
 
@@ -385,4 +404,4 @@ onMounted(async () => {
 .recording-item {
   width: 100%;
 }
-</style> 
+</style>

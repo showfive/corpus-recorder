@@ -201,22 +201,23 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openFile'],
     filters: [
-      { name: 'Text Files', extensions: getSupportedExtensions() }
+      { name: 'Text Files', extensions: getSupportedExtensions() },
+      { name: 'All Files', extensions: ['*'] }
     ]
   })
-  
+
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0]
     try {
+      // textFileService を使用してファイルを読み込み、解析する
       const parseResult = await readAndParseTextFile(filePath)
-      store.set('lastOpenedTextFile', filePath)
-      return parseResult
+      store.set('lastOpenedTextFile', filePath) // 最後に開いたファイルを保存
+      return parseResult // 解析結果全体を返す
     } catch (error) {
-      console.error('Failed to read and parse text file:', error)
+      console.error('Failed to read or parse text file:', error)
       return { error: error instanceof Error ? error.message : 'Unknown error' }
     }
   }
-  
   return null
 })
 
@@ -231,4 +232,4 @@ ipcMain.handle(IPC_CHANNELS.UPDATE_SETTINGS, (_, settings: Partial<AppSettings>)
     store.set(key as keyof AppSettings, value)
   })
   return store.store
-}) 
+})

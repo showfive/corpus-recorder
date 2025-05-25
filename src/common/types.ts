@@ -26,7 +26,8 @@ export interface TextFileReadResult {
   filePath: string
   content: string
   texts: CorpusText[]
-  format: string
+  format: TextFileFormat // string から TextFileFormat に変更
+  error?: string // error プロパティを追加
 }
 
 // アプリケーション設定に関する型定義
@@ -58,4 +59,11 @@ export enum RecordingState {
   RECORDING = 'recording',
   PAUSED = 'paused',
   PROCESSING = 'processing'
+}
+
+// サポートするテキストファイルのフォーマット
+export enum TextFileFormat {
+  PLAIN_TEXT = 'plain-text',
+  ITA_FORMAT = 'ita-format', // ITAコーパス形式
+  ROHAN_FORMAT = 'rohan-format' // Rohanコーパス形式
 }
