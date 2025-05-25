@@ -107,6 +107,25 @@ function generateRubyHtml(rubyText: RubySegment[] | undefined): string {
   /* min-height: 80px; // text-content の min-height で調整 */
 }
 
+.main-text :deep(ruby) {
+  display: inline-block; /* displayをinline-blockに変更 */
+  position: relative;
+  margin-right: 0.1em;
+  text-align: center; /* ベーステキストを中央揃えにする */
+}
+
+.main-text :deep(rt) {
+  font-size: 0.6em; /* ルビのフォントサイズを小さくする */
+  line-height: 1; /* ルビの行の高さを詰める */
+  text-align: center; /*念のためrtにも設定*/
+  position: absolute; /* 親要素(ruby)に対して絶対配置 */
+  top: -0.8em; /* ルビを漢字の上に配置するための調整 */
+  left: 50%;
+  transform: translateX(-50%); /* 中央揃え */
+  white-space: nowrap; /* ルビが改行されないようにする */
+  width: max-content; /* rtの幅を内容に合わせる */
+}
+
 .no-text {
   color: #909399;
   font-style: italic;

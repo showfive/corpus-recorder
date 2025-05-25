@@ -40,7 +40,7 @@ function detectFormat(content: string): FormatDetectionResult {
   console.log('[textFileService] detectFormat: Detection threshold (80% of lines):', threshold);
 
   // Rohanコーパス形式の検出
-  const rohanRegex = /^ROHAN4600_\\d+:(.+),([ァ-ヴー、]+[。]?)$/; // 「、」も許容
+  const rohanRegex = /^([^:]+):(.*[(（)].*),([ァ-ヴー、。]+[。？]?)$/; // 「、」も許容
   let rohanMatchesCount = 0;
   const nonMatchingRohanLines: string[] = [];
 
@@ -161,22 +161,39 @@ function parseRohanFormat(content: string): CorpusText[] {
     const label = parts[0];
     const textAndReading = parts[1].split(',');
     const rawText = textAndReading[0];
-    const reading = textAndReading[1];
-
-    const rubyText: RubySegment[] = [];
+    const reading = textAndReading[1];    const rubyText: RubySegment[] = [];
     let lastIndex = 0;
-    const regex = /(.*?)\(（(.*?)\)）/g;
+    // 正規表現を修正: ルビの親文字を漢字に限定
+    const regex = /([\u4E00-\u9FFF]+)\(([^)]+)\)/g;
     let match;
+    
     while ((match = regex.exec(rawText)) !== null) {
-      if (match[1]) {
-        rubyText.push(match[1]);
+      // マッチした部分より前のテキストがあれば追加
+      if (match.index > lastIndex) {
+        const beforeText = rawText.substring(lastIndex, match.index);
+        if (beforeText.trim()) {
+          rubyText.push(beforeText);
+        }
       }
-      rubyText.push({ base: match[2], ruby: match[3] });
+      
+      // ルビ付きテキストを追加
+      rubyText.push({ 
+        base: match[1], 
+        ruby: match[2] 
+      });
+      
       lastIndex = match.index + match[0].length;
     }
+    
+    // 残りのテキストがあれば追加
     if (lastIndex < rawText.length) {
-      rubyText.push(rawText.substring(lastIndex));
+      const remainingText = rawText.substring(lastIndex);
+      if (remainingText.trim()) {
+        rubyText.push(remainingText);
+      }
     }
+
+    console.log(`[textFileService] rubyText for line ${index}:`, rubyText);
 
     return {
       id: `text-${index}`,
