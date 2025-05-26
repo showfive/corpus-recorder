@@ -12,7 +12,7 @@
     "electron": "electron .",
     "electron:serve": "electron . --serve",
     "dist": "electron-builder",
-    "copy-preload": "cp electron/preload.cjs dist-electron/"
+    "copy-preload": "copyfiles -u 1 electron/preload.cjs dist-electron/"
   },
   "keywords": [
     "electron",
@@ -26,6 +26,7 @@
     "@types/node": "^22.15.21",
     "@types/node-wav": "^0.0.4",
     "@vitejs/plugin-vue": "^5.2.4",
+    "copyfiles": "^2.4.1",
     "electron": "^36.3.1",
     "electron-builder": "^26.0.12",
     "typescript": "^5.8.3",
