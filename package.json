@@ -12,7 +12,7 @@
     "electron": "electron .",
     "electron:serve": "electron . --serve",
     "dist": "electron-builder",
-    "copy-preload": "copy electron\\preload.cjs dist-electron\\"
+    "copy-preload": "cp electron/preload.cjs dist-electron/"
   },
   "keywords": [
     "electron",
