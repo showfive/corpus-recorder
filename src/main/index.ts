@@ -124,7 +124,7 @@ const createWindow = () => {
     // 開発者ツールは必要に応じて手動で開く
     // mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../index.html'))
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html')); // 修正後
   }
 
   mainWindow.on('closed', () => {
