@@ -148,11 +148,9 @@ export const useRecordingStore = defineStore('recording', () => {
       recordingState.value = RecordingState.IDLE
       recordingService.resetState()
       return
-    }
-
-    try {
+    }    try {
       const takeNumber = getNextTakeNumber(currentText.id)
-      const fileName = `${currentText.index.toString().padStart(3, '0')}_take${takeNumber}.wav`
+      const fileName = generateFileName(currentText, takeNumber)
       
       const metadata: AudioFileMetadata = {
         text: currentText.text,
@@ -231,13 +229,51 @@ export const useRecordingStore = defineStore('recording', () => {
       console.error('Failed to delete recording:', error)
       ElMessage.error('録音の削除に失敗しました')
     }
-  }
-  /**
+  }  /**
    * 次のテイク番号を取得
    */
   const getNextTakeNumber = (textId: string): number => {
     const existingRecordings = recordings.value.filter(r => r.textId === textId)
     return existingRecordings.length + 1
+  }
+  /**
+   * ファイル名を生成する
+   */
+  const generateFileName = (text: CorpusText, takeNumber: number): string => {
+    // ラベルが存在する場合はそれを使用
+    if (text.label) {
+      // テイク番号が1の場合は省略、2以上の場合は_take{number}を付加
+      if (takeNumber === 1) {
+        return `${text.label}.wav`
+      } else {
+        return `${text.label}_take${takeNumber}.wav`
+      }
+    }
+    
+    // フォーマットに応じたデフォルト名を生成
+    const format = currentFileFormat.value
+    const paddedIndex = text.index.toString().padStart(4, '0')
+    
+    let baseName: string
+    switch (format) {
+      case TextFileFormat.ROHAN_FORMAT:
+        baseName = `ROHAN4600_${paddedIndex}`
+        break
+      case TextFileFormat.ITA_FORMAT:
+        baseName = `ITA_${paddedIndex}`
+        break
+      case TextFileFormat.PLAIN_TEXT:
+      default:
+        baseName = `anycorpus_${paddedIndex}`
+        break
+    }
+    
+    // テイク番号が1の場合は省略、2以上の場合は_take{number}を付加
+    if (takeNumber === 1) {
+      return `${baseName}.wav`
+    } else {
+      return `${baseName}_take${takeNumber}.wav`
+    }
   }
 
   /**
