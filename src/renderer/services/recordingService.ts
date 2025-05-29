@@ -1,4 +1,4 @@
-import { RecordingState } from '../../common/types'
+import { RecordingState, AudioQualitySettings } from '../../common/types'
 import { blobToAudioBuffer, audioBufferToWav } from '../utils/audioUtils'
 import { createLogger } from '../../common/logger'
 import { errorHandler, ErrorCategory } from '../../common/errorHandler'
@@ -25,6 +25,11 @@ export class RecordingService {
   private animationId: number | null = null
   private stream: MediaStream | null = null
   private logger = createLogger('RecordingService')
+  private audioQualitySettings: AudioQualitySettings = {
+    autoGainControl: false,
+    noiseSuppression: false,
+    echoCancellation: false
+  }
 
   // イベントハンドラー
   public onRecordingComplete: ((data: RecordingData) => void) | null = null
@@ -33,7 +38,7 @@ export class RecordingService {
   public onRecordingRetry: (() => void) | null = null
   public onTimeUpdate: ((seconds: number) => void) | null = null
 
-  private state: RecordingState = RecordingState.IDLE  /**
+  private state: RecordingState = RecordingState.IDLE/**
    * 録音を開始する
    */
   async startRecording(): Promise<void> {
@@ -45,12 +50,34 @@ export class RecordingService {
         const error = new Error('録音は既に開始されています')
         this.logger.warn('Recording start attempted while not idle', { currentState: this.state })
         throw error
+      }      // マイクへのアクセス許可を取得（音声品質設定を適用）
+      this.logger.debug('Requesting microphone access with quality settings...', this.audioQualitySettings)
+      
+      const audioConstraints: MediaTrackConstraints = {
+        autoGainControl: this.audioQualitySettings.autoGainControl,
+        noiseSuppression: this.audioQualitySettings.noiseSuppression,
+        echoCancellation: this.audioQualitySettings.echoCancellation
       }
 
-      // マイクへのアクセス許可を取得
-      this.logger.debug('Requesting microphone access...')
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      this.logger.info('Microphone access granted')
+      // サンプルレートが設定されている場合は追加
+      if (this.audioQualitySettings.sampleRate) {
+        audioConstraints.sampleRate = this.audioQualitySettings.sampleRate
+      }
+
+      this.stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: audioConstraints
+      })
+      
+      this.logger.info('Microphone access granted with constraints', { 
+        constraints: audioConstraints,
+        streamId: this.stream.id,
+        tracks: this.stream.getAudioTracks().map(track => ({
+          id: track.id,
+          label: track.label,
+          enabled: track.enabled,
+          settings: track.getSettings()
+        }))
+      })
       
       // AudioContextの初期化
       this.logger.debug('Initializing AudioContext...')
@@ -322,25 +349,29 @@ export class RecordingService {
         
         this.animationId = requestAnimationFrame(draw)
         
+        // 波形データを取得
         const dataArray = this.getWaveformData()
         if (!dataArray) {
-          this.logger.warn('No waveform data available for drawing')
+          this.logger.warn('No waveform data available')
           return
         }
         
-        canvasCtx.fillStyle = 'rgb(245, 247, 250)'
+        // キャンバスをクリア
+        canvasCtx.fillStyle = 'rgb(20, 20, 20)'
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height)
         
+        // 波形を描画
         canvasCtx.lineWidth = 2
-        canvasCtx.strokeStyle = 'rgb(64, 158, 255)'
+        canvasCtx.strokeStyle = 'rgb(34, 197, 94)'
         canvasCtx.beginPath()
         
         const sliceWidth = canvas.width / dataArray.length
         let x = 0
         
         for (let i = 0; i < dataArray.length; i++) {
-          const v = dataArray[i] / 128.0
-          const y = v * canvas.height / 2
+          // 128を中心として正規化（-1 to 1の範囲）
+          const v = (dataArray[i] - 128) / 128.0
+          const y = (v * canvas.height / 2) + (canvas.height / 2)
           
           if (i === 0) {
             canvasCtx.moveTo(x, y)
@@ -351,8 +382,14 @@ export class RecordingService {
           x += sliceWidth
         }
         
-        canvasCtx.lineTo(canvas.width, canvas.height / 2)
         canvasCtx.stroke()
+        
+        // デバッグ: 音声レベルをログ出力（100フレームごと）
+        const frameCount = Math.floor(Date.now() / 100) % 100
+        if (frameCount === 0) {
+          const rms = Math.sqrt(dataArray.reduce((sum, val) => sum + Math.pow((val - 128) / 128, 2), 0) / dataArray.length)
+          this.logger.debug('Audio level (RMS):', rms.toFixed(4))
+        }
       }
       
       this.logger.debug('Starting waveform animation loop')
@@ -366,6 +403,18 @@ export class RecordingService {
         category: ErrorCategory.UI_INTERACTION,
         userMessage: '波形表示でエラーが発生しました'
       })
+    }
+  }
+  /**
+   * 波形描画を停止する
+   */
+  stopWaveformDrawing(): void {
+    this.logger.debug('Stopping waveform drawing')
+    
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+      this.logger.debug('Waveform animation stopped')
     }
   }
 
@@ -428,6 +477,13 @@ export class RecordingService {
   private cleanup(): void {
     this.cleanupResources()
     this.state = RecordingState.IDLE
+  }
+  /**
+   * 音声品質設定を更新する
+   */
+  updateAudioSettings(settings: AudioQualitySettings): void {
+    this.audioQualitySettings = { ...settings }
+    this.logger.info('Audio quality settings updated', this.audioQualitySettings)
   }
 
   /**

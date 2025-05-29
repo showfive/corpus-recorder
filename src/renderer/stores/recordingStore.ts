@@ -7,13 +7,13 @@ import {
   RecordingState, 
   TextFileFormat, 
   AudioFileMetadata,
-  AppSettings 
+  AppSettings,
+  AudioQualitySettings 
 } from '../../common/types'
 import { electronService } from '../services/electronService'
 import { recordingService } from '../services/recordingService'
 
-export const useRecordingStore = defineStore('recording', () => {
-  // === 状態 ===
+export const useRecordingStore = defineStore('recording', () => {  // === 状態 ===
   const recordingDirectory = ref<string>('')
   const texts = ref<CorpusText[]>([])
   const currentTextIndex = ref<number>(0)
@@ -21,6 +21,11 @@ export const useRecordingStore = defineStore('recording', () => {
   const recordings = ref<Recording[]>([])
   const currentFileFormat = ref<TextFileFormat>(TextFileFormat.PLAIN_TEXT)
   const lastOpenedTextFile = ref<string>('')
+  const audioSettings = ref<AudioQualitySettings>({
+    autoGainControl: false,
+    noiseSuppression: false,
+    echoCancellation: false
+  })
 
   // === ゲッター ===
   const currentTextObject = computed((): CorpusText | null => {
@@ -38,7 +43,6 @@ export const useRecordingStore = defineStore('recording', () => {
   })
 
   // === アクション ===
-
   /**
    * 設定を読み込む
    */
@@ -54,9 +58,40 @@ export const useRecordingStore = defineStore('recording', () => {
       if (settings.lastOpenedTextFile) {
         lastOpenedTextFile.value = settings.lastOpenedTextFile
       }
+      if (settings.audioQuality) {
+        audioSettings.value = settings.audioQuality
+      }
     } catch (error) {
       console.error('Failed to load settings:', error)
       ElMessage.error('設定の読み込みに失敗しました')
+    }
+  }  /**
+   * 音声品質設定を更新する
+   */  const updateAudioSetting = async (key: keyof AudioQualitySettings, value: boolean): Promise<void> => {
+    try {
+      audioSettings.value = {
+        ...audioSettings.value,
+        [key]: value
+      }
+      
+      // プレーンなオブジェクトとして送信
+      const plainAudioSettings = {
+        autoGainControl: audioSettings.value.autoGainControl,
+        noiseSuppression: audioSettings.value.noiseSuppression,
+        echoCancellation: audioSettings.value.echoCancellation
+      }
+      
+      await electronService.updateSettings({ 
+        audioQuality: plainAudioSettings 
+      })
+      
+      // recordingServiceに設定を反映
+      recordingService.updateAudioSettings(plainAudioSettings)
+      
+      ElMessage.success('音声設定を更新しました')
+    } catch (error) {
+      console.error('Failed to update audio setting:', error)
+      ElMessage.error('音声設定の更新に失敗しました')
     }
   }
 
@@ -319,7 +354,6 @@ export const useRecordingStore = defineStore('recording', () => {
     // 設定を読み込み
     await loadSettings()
   }
-
   return {
     // 状態
     recordingDirectory,
@@ -329,6 +363,12 @@ export const useRecordingStore = defineStore('recording', () => {
     recordings,
     currentFileFormat,
     lastOpenedTextFile,
+    audioSettings,
+    
+    // 音声設定のゲッター
+    autoGainControl: computed(() => audioSettings.value.autoGainControl),
+    noiseSuppression: computed(() => audioSettings.value.noiseSuppression),
+    echoCancellation: computed(() => audioSettings.value.echoCancellation),
     
     // ゲッター
     currentTextObject,
@@ -347,6 +387,12 @@ export const useRecordingStore = defineStore('recording', () => {
     playRecording,
     formatDuration,
     getNextTakeNumber,
-    initialize
+    initialize,
+    
+    // 音声設定のアクション
+    updateAudioSetting,
+    updateAutoGainControl: (value: boolean) => updateAudioSetting('autoGainControl', value),
+    updateNoiseSuppression: (value: boolean) => updateAudioSetting('noiseSuppression', value),
+    updateEchoCancellation: (value: boolean) => updateAudioSetting('echoCancellation', value)
   }
 })

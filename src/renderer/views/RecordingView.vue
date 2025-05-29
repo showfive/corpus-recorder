@@ -1,63 +1,82 @@
 <template>
-  <div class="recording-view">
-    <!-- 専用タイトルバー（ドラッグ専用領域） -->
+  <div class="recording-view">    <!-- 専用タイトルバー（ドラッグ専用領域） -->
     <div class="title-bar">
-      <span class="app-title">Corpus Recorder</span>
-    </div>
-
-    <!-- 設定エリア -->
-    <SettingsPanel
-      :recording-directory="recordingStore.recordingDirectory"
-      @select-directory="recordingStore.selectDirectory"
-      @load-text-file="recordingStore.loadTextFile"
-    />
+      <div class="title-content">
+        <div class="app-icon">🎙️</div>
+        <span class="app-title">Corpus Recorder</span>
+      </div>
+      <el-button
+        :icon="Setting"
+        circle
+        size="small"
+        class="settings-button"
+        @click="showSettings = true"
+      />
+    </div>    
+    <!-- 設定ダイアログ -->
+    <el-dialog
+      v-model="showSettings"
+      title="設定"
+      width="600px"
+      :modal="true"
+      :close-on-click-modal="false"
+    >
+      <SettingsPanel
+        :recording-directory="recordingStore.recordingDirectory"
+        :audio-settings="recordingStore.audioSettings"
+        @select-directory="recordingStore.selectDirectory"
+        @update-audio-setting="recordingStore.updateAudioSetting"
+      />
+    </el-dialog>
 
     <!-- メインコンテンツ -->
-    <el-main class="main-content">
-      <!-- テキスト表示エリア -->
-      <TextDisplay 
-        :currentText="recordingStore.currentTextObject"
-        :textIndex="recordingStore.currentTextIndex"
-        :totalTexts="recordingStore.texts.length"
-        :fileFormat="recordingStore.currentFileFormat"
-      />      <!-- 録音コントロール -->
-      <RecordingControls
-        :recording-state="recordingStore.recordingState"
-        :has-recordings="recordingStore.currentRecordings.length > 0"
-        @start-recording="recordingStore.startRecording"
-        @stop-recording="recordingStore.stopRecording"
-        @retry-recording="recordingStore.retryRecording"
-      />
+    <div class="main-content">
+      <div class="content-grid">        <!-- 左側: テキスト表示（ナビゲーション統合済み） -->
+        <div class="left-panel">
+          <TextDisplay 
+            :currentText="recordingStore.currentTextObject"
+            :textIndex="recordingStore.currentTextIndex"
+            :totalTexts="recordingStore.texts.length"
+            :fileFormat="recordingStore.currentFileFormat"
+            @load-text-file="recordingStore.loadTextFile"
+            @navigate-to="recordingStore.navigateToText"
+          />
+        </div>
 
-      <!-- ナビゲーションコントロール -->
-      <NavigationControls
-        :current-index="recordingStore.currentTextIndex"
-        :total-texts="recordingStore.texts.length"
-        @navigate-to="recordingStore.navigateToText"
-      />
+        <!-- 右側: 録音コントロールと録音リスト -->
+        <div class="right-panel">
+          <RecordingControls
+            :recording-state="recordingStore.recordingState"
+            :has-recordings="recordingStore.currentRecordings.length > 0"
+            @start-recording="recordingStore.startRecording"
+            @stop-recording="recordingStore.stopRecording"
+            @retry-recording="recordingStore.retryRecording"
+          />
 
-      <!-- 録音済み音声リスト -->
-      <RecordingsList
-        :recordings="recordingStore.currentRecordings"
-        @play-recording="recordingStore.playRecording"
-        @delete-recording="recordingStore.deleteRecording"
-      />
-    </el-main>
+          <RecordingsList
+            :recordings="recordingStore.currentRecordings"
+            @play-recording="recordingStore.playRecording"
+            @delete-recording="recordingStore.deleteRecording"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import TextDisplay from '../components/TextDisplay.vue'
 import RecordingControls from '../components/RecordingControls.vue'
-import NavigationControls from '../components/NavigationControls.vue'
 import RecordingsList from '../components/RecordingsList.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import { useRecordingStore } from '../stores/recordingStore'
 
 // Piniaストアの使用
 const recordingStore = useRecordingStore()
+const showSettings = ref(false)
 
 // 初期化
 onMounted(async () => {
@@ -70,31 +89,86 @@ onMounted(async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background-color: var(--bg-secondary);
 }
 
 .title-bar {
-  height: 40px;
-  background: linear-gradient(to bottom, #f7f7f7, #e8e8e8);
-  border-bottom: 1px solid #d0d0d0;
+  height: 48px;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  padding: 0 var(--space-md);
   -webkit-app-region: drag;
   user-select: none;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+
+.title-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.app-icon {
+  font-size: 1.25rem;
 }
 
 .app-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #333;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: white;
+  letter-spacing: -0.025em;
+}
+
+.settings-button {
+  -webkit-app-region: no-drag;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.settings-button:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: scale(1.05);
 }
 
 .main-content {
   flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-xl);
+  min-height: 0;
+}
+
+.content-grid {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-  overflow-y: auto;
+  gap: var(--space-lg);
+  min-height: min-content;
+  padding-bottom: var(--space-xl);
+}
+
+.left-panel,
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-height: min-content;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .main-content {
+    padding: var(--space-md);
+  }
+  
+  .content-grid {
+    gap: var(--space-md);
+    max-width: 100%;
+  }
 }
 </style>

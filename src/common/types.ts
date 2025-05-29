@@ -32,11 +32,21 @@ export interface TextFileReadResult {
   error?: string // error プロパティを追加
 }
 
+// 音声品質設定
+export interface AudioQualitySettings {
+  autoGainControl: boolean
+  noiseSuppression: boolean
+  echoCancellation: boolean
+  sampleRate?: number
+  bitDepth?: number
+}
+
 // アプリケーション設定に関する型定義
 export interface AppSettings {
   recordingDirectory: string
   lastOpenedTextFile?: string
   lastTextIndex?: number
+  audioQuality?: AudioQualitySettings
 }
 
 // 音声ファイル保存時のメタデータ

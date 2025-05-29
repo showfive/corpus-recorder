@@ -1,33 +1,37 @@
 <template>
   <div class="navigation-controls">
-    <el-card>
-      <div class="controls-container">
-        <el-button
-          :disabled="currentIndex === 0"
-          :icon="ArrowLeft"
-          @click="navigatePrevious"
-        >
-          前の文
-        </el-button>
+    <div class="nav-controls">
+      <el-button
+        :disabled="currentIndex === 0"
+        :icon="ArrowLeft"
+        @click="navigatePrevious"
+        class="nav-button"
+        size="small"
+      >
+        前の文
+      </el-button>
 
-        <el-input-number
-          v-model="jumpToIndex"
-          :min="1"
-          :max="totalTexts || 1"
-          :disabled="totalTexts === 0"
-          @change="handleJump"
-          style="width: 120px"
-        />
+      <el-input-number
+        v-model="jumpToIndex"
+        :min="1"
+        :max="totalTexts || 1"
+        :disabled="totalTexts === 0"
+        @change="handleJump"
+        size="small"
+        class="jump-input"
+        :controls="false"
+      />
 
-        <el-button
-          :disabled="currentIndex >= totalTexts - 1"
-          :icon="ArrowRight"
-          @click="navigateNext"
-        >
-          次の文
-        </el-button>
-      </div>
-    </el-card>
+      <el-button
+        :disabled="currentIndex >= totalTexts - 1"
+        :icon="ArrowRight"
+        @click="navigateNext"
+        class="nav-button"
+        size="small"
+      >
+        次の文
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -81,11 +85,37 @@ watch(() => props.currentIndex, (newIndex) => {
   width: 100%;
 }
 
-.controls-container {
+.nav-controls {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 20px;
-  padding: 10px;
+  gap: var(--space-md);
+  padding: var(--space-md);
 }
-</style> 
+
+.nav-button {
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.jump-input {
+  width: 80px;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .nav-controls {
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+  }
+  
+  .nav-button {
+    font-size: var(--font-size-sm);
+    padding: var(--space-xs) var(--space-sm);
+  }
+  
+  .jump-input {
+    width: 70px;
+  }
+}
+</style>
