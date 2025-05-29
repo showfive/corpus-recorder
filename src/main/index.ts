@@ -5,34 +5,15 @@ import { promises as fsPromises } from 'fs'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
 import { readAndParseTextFile, getSupportedExtensions } from './services/textFileService'
-import { AudioFileMetadata } from '../common/types'
+import { AudioFileMetadata, IPC_CHANNELS, AppSettings, TextFileFormat } from '../common/types'
 import { addMetadataToWav } from './utils/wavMetadata'
 
 // ESモジュールで__dirnameを取得
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// IPC通信のチャンネル名を直接定義
-const IPC_CHANNELS = {
-  SELECT_DIRECTORY: 'select-directory',
-  SAVE_AUDIO_FILE: 'save-audio-file',
-  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
-  DELETE_AUDIO_FILE: 'delete-audio-file',
-  READ_TEXT_FILE: 'read-text-file',
-  GET_SETTINGS: 'get-settings',
-  UPDATE_SETTINGS: 'update-settings',
-  APP_READY: 'app-ready'
-} as const
-
-// アプリケーション設定の型定義
-interface AppSettings {
-  recordingDirectory: string
-  lastOpenedTextFile?: string
-  lastTextIndex?: number
-}
-
 // electron-storeの初期化
-const store = new Store({
+const store = new Store<AppSettings>({
   defaults: {
     recordingDirectory: path.join(app.getPath('documents'), 'CorpusRecordings')
   }
@@ -232,7 +213,6 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
       { name: 'All Files', extensions: ['*'] }
     ]
   })
-
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0]
     try {
@@ -242,7 +222,13 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
       return parseResult // 解析結果全体を返す
     } catch (error) {
       console.error('Failed to read or parse text file:', error)
-      return { error: error instanceof Error ? error.message : 'Unknown error' }
+      return { 
+        filePath,
+        content: '',
+        texts: [],
+        format: TextFileFormat.PLAIN_TEXT,
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
     }
   }
   return null

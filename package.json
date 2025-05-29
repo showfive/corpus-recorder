@@ -41,6 +41,7 @@
     "electron-store": "^10.0.1",
     "element-plus": "^2.9.11",
     "iconv-lite": "^0.6.3",
-    "node-wav": "^0.0.2"
+    "node-wav": "^0.0.2",
+    "pinia": "^3.0.2"
   }
 }

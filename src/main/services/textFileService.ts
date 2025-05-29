@@ -1,21 +1,6 @@
 import { promises as fsPromises } from 'fs'
 import path from 'path'
-import { CorpusText, RubySegment } from '../../common/types'
-
-// テキストファイルの読み込み結果
-export interface TextFileResult {
-  filePath: string
-  content: string
-  texts: CorpusText[]
-  format: TextFileFormat
-}
-
-// サポートするテキストファイルのフォーマット
-export enum TextFileFormat {
-  PLAIN_TEXT = 'plain-text',
-  ITA_FORMAT = 'ita-format', // ITAコーパス形式
-  ROHAN_FORMAT = 'rohan-format' // Rohanコーパス形式
-}
+import { CorpusText, RubySegment, TextFileReadResult, TextFileFormat } from '../../common/types'
 
 // フォーマット検出の結果
 interface FormatDetectionResult {
@@ -225,7 +210,7 @@ function parseTextContent(content: string, format: TextFileFormat): CorpusText[]
 /**
  * テキストファイルを読み込み、フォーマットを自動検出して解析する
  */
-export async function readAndParseTextFile(filePath: string): Promise<TextFileResult> {
+export async function readAndParseTextFile(filePath: string): Promise<TextFileReadResult> {
   try {
     let content = await fsPromises.readFile(filePath, 'utf-8');
     // BOMの除去 (U+FEFF)

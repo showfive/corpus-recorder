@@ -45,10 +45,8 @@
             @click="stopRecording"
           >
             録音停止
-          </el-button>
-
-          <el-button
-            v-if="recordingState === RecordingState.IDLE && hasRecorded"
+          </el-button>          <el-button
+            v-if="recordingState === RecordingState.IDLE && hasRecordings"
             size="large"
             :icon="Refresh"
             @click="retryRecording"
@@ -62,19 +60,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Microphone, VideoPause, Refresh } from '@element-plus/icons-vue'
 import { RecordingState } from '../../common/types'
-import { audioBufferToWav, blobToAudioBuffer } from '../utils/audioUtils'
+import { recordingService } from '../services/recordingService'
 
 interface Props {
   recordingState: RecordingState
+  hasRecordings: boolean
 }
 
 interface Emits {
   (e: 'start-recording'): void
-  (e: 'stop-recording', data: { arrayBuffer: ArrayBuffer; duration: number }): void
+  (e: 'stop-recording'): void
   (e: 'retry-recording'): void
 }
 
@@ -82,18 +81,23 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 // 録音関連の状態
-const hasRecorded = ref(false)
-const recordingTime = ref(0)
 const waveformCanvas = ref<HTMLCanvasElement>()
+const recordingTime = ref(0)
 
-// Web Audio API関連
-let audioContext: AudioContext | null = null
-let mediaRecorder: MediaRecorder | null = null
-let audioChunks: Blob[] = []
-let analyser: AnalyserNode | null = null
-let animationId: number | null = null
-let startTime: number = 0
-let timerInterval: number | null = null
+// recordingServiceのセットアップ
+onMounted(() => {
+  // 時間更新のイベントハンドラーのみ設定（UI表示用）
+  recordingService.onTimeUpdate = (seconds) => {
+    recordingTime.value = seconds
+  }
+  
+  // 録音開始時の波形描画設定 - 削除して状態監視で処理
+  // recordingService.onRecordingStart = () => {
+  //   if (waveformCanvas.value) {
+  //     recordingService.startWaveformDrawing(waveformCanvas.value)
+  //   }
+  // }
+})
 
 // 状態表示
 const statusText = computed(() => {
@@ -123,145 +127,18 @@ const statusTagType = computed(() => {
 })
 
 // 録音開始
-const startRecording = async () => {
-  try {
-    // マイクへのアクセス許可を取得
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    
-    // AudioContextの初期化
-    audioContext = new AudioContext()
-    const source = audioContext.createMediaStreamSource(stream)
-    
-    // アナライザーの設定（波形表示用）
-    analyser = audioContext.createAnalyser()
-    analyser.fftSize = 2048
-    source.connect(analyser)
-    
-    // MediaRecorderの設定
-    mediaRecorder = new MediaRecorder(stream)
-    audioChunks = []
-    
-    mediaRecorder.ondataavailable = (event) => {
-      audioChunks.push(event.data)
-    }
-    
-    mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
-      const duration = (Date.now() - startTime) / 1000
-      
-      try {
-        // WebM/OggをAudioBufferに変換してからWAVに変換
-        const audioBuffer = await blobToAudioBuffer(audioBlob, audioContext!)
-        const wavArrayBuffer = audioBufferToWav(audioBuffer)
-        
-        // ストリームを停止
-        stream.getTracks().forEach(track => track.stop())
-        
-        emit('stop-recording', { arrayBuffer: wavArrayBuffer, duration })
-        hasRecorded.value = true
-      } catch (error) {
-        console.error('Failed to convert audio:', error)
-        ElMessage.error('音声の変換に失敗しました')
-        // ストリームを停止
-        stream.getTracks().forEach(track => track.stop())
-      } finally {
-        // AudioContext停止（最後に実行）
-        if (audioContext) {
-          audioContext.close()
-          audioContext = null
-        }
-      }
-    }
-    
-    // 録音開始
-    mediaRecorder.start()
-    startTime = Date.now()
-    emit('start-recording')
-    
-    // タイマー開始
-    timerInterval = window.setInterval(() => {
-      recordingTime.value = Math.floor((Date.now() - startTime) / 1000)
-    }, 100)
-    
-    // 波形描画開始
-    drawWaveform()
-    
-  } catch (error) {
-    console.error('Failed to start recording:', error)
-    ElMessage.error('マイクへのアクセスに失敗しました')
-  }
+const startRecording = () => {
+  emit('start-recording')
 }
 
 // 録音停止
 const stopRecording = () => {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop()
-    
-    // タイマー停止
-    if (timerInterval) {
-      clearInterval(timerInterval)
-      timerInterval = null
-    }
-    
-    // 波形描画停止
-    if (animationId) {
-      cancelAnimationFrame(animationId)
-      animationId = null
-    }
-    
-    // AudioContextのクリーンアップはonstopイベントで行う
-  }
+  emit('stop-recording')
 }
 
 // やり直し
 const retryRecording = () => {
-  hasRecorded.value = false
-  recordingTime.value = 0
   emit('retry-recording')
-}
-
-// 波形描画
-const drawWaveform = () => {
-  if (!analyser || !waveformCanvas.value) return
-  
-  const canvas = waveformCanvas.value
-  const canvasCtx = canvas.getContext('2d')!
-  const bufferLength = analyser.frequencyBinCount
-  const dataArray = new Uint8Array(bufferLength)
-    const draw = () => {
-    animationId = requestAnimationFrame(draw)
-    
-    if (!analyser) return
-    analyser.getByteTimeDomainData(dataArray)
-    
-    canvasCtx.fillStyle = 'rgb(245, 247, 250)'
-    canvasCtx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    canvasCtx.lineWidth = 2
-    canvasCtx.strokeStyle = 'rgb(64, 158, 255)'
-    canvasCtx.beginPath()
-    
-    const sliceWidth = canvas.width / bufferLength
-    let x = 0
-    
-    for (let i = 0; i < bufferLength; i++) {
-      const v = dataArray[i] / 128.0
-      const y = v * canvas.height / 2
-      
-      if (i === 0) {
-        canvasCtx.moveTo(x, y)
-      } else {
-        canvasCtx.lineTo(x, y)
-      }
-      
-      x += sliceWidth
-    }
-    
-    canvasCtx.lineTo(canvas.width, canvas.height / 2)
-    canvasCtx.stroke()
-  }
-  
-  draw()
 }
 
 // 時間フォーマット
@@ -273,15 +150,43 @@ const formatTime = (seconds: number) => {
 
 // クリーンアップ
 onUnmounted(() => {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    stopRecording()
-  }
+  // recordingServiceのイベントハンドラーをクリア（UI関連のみ）
+  recordingService.onTimeUpdate = null
+  // recordingService.onRecordingStart = null // 削除
 })
 
 // 録音状態の監視
-watch(() => props.recordingState, (newState) => {
+watch(() => props.recordingState, (newState, oldState) => {
   if (newState === RecordingState.IDLE) {
     recordingTime.value = 0
+  }
+  
+  // 録音開始時に波形描画を開始
+  if (newState === RecordingState.RECORDING && oldState === RecordingState.IDLE) {
+    if (waveformCanvas.value) {
+      // 波形描画開始の試行（最大3回までリトライ）
+      let retryCount = 0
+      const maxRetries = 3
+        const startWaveform = () => {
+        if (waveformCanvas.value && recordingService.isRecording()) {
+          if (recordingService.isAnalyserReady()) {
+            console.log('Starting waveform drawing - analyser available')
+            recordingService.startWaveformDrawing(waveformCanvas.value)
+          } else {
+            retryCount++
+            if (retryCount < maxRetries) {
+              console.log(`Waveform analyser not ready, retrying (${retryCount}/${maxRetries})...`)
+              setTimeout(startWaveform, 150)
+            } else {
+              console.warn('Failed to start waveform drawing - analyser not available after retries')
+            }
+          }
+        }
+      }
+      
+      // 初回試行
+      setTimeout(startWaveform, 100)
+    }
   }
 })
 </script>

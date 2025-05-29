@@ -1,18 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { IPC_CHANNELS, type AudioFileMetadata, type TextFileReadResult, type AppSettings } from '../common/types'
 
 console.log('=== Preload script started ===')
-
-// IPC通信のチャンネル名を直接定義
-const IPC_CHANNELS = {
-  SELECT_DIRECTORY: 'select-directory',
-  SAVE_AUDIO_FILE: 'save-audio-file',
-  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
-  DELETE_AUDIO_FILE: 'delete-audio-file',
-  READ_TEXT_FILE: 'read-text-file',
-  GET_SETTINGS: 'get-settings',
-  UPDATE_SETTINGS: 'update-settings',
-  APP_READY: 'app-ready'
-} as const
 
 const electronAPI = {
   // ディレクトリ選択
@@ -25,9 +14,8 @@ const electronAPI = {
     console.log('saveAudioFile called:', fileName)
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE, arrayBuffer, fileName)
   },
-  
-  // メタデータ付き音声ファイルの保存
-  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: any): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    // メタデータ付き音声ファイルの保存
+  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: AudioFileMetadata): Promise<{ success: boolean; filePath?: string; error?: string }> => {
     console.log('saveAudioFileWithMetadata called:', metadata.fileName)
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE_WITH_METADATA, arrayBuffer, metadata)
   },
@@ -39,19 +27,19 @@ const electronAPI = {
   },
   
   // テキストファイルの読み込み
-  readTextFile: (): Promise<{ filePath: string; content: string } | null> => {
+  readTextFile: (): Promise<TextFileReadResult | null> => {
     console.log('readTextFile called')
     return ipcRenderer.invoke(IPC_CHANNELS.READ_TEXT_FILE)
   },
   
   // 設定の取得
-  getSettings: (): Promise<Record<string, any>> => {
+  getSettings: (): Promise<Partial<AppSettings>> => {
     console.log('getSettings called')
     return ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS)
   },
   
   // 設定の更新
-  updateSettings: (settings: Record<string, any>): Promise<Record<string, any>> => {
+  updateSettings: (settings: Partial<AppSettings>): Promise<Partial<AppSettings>> => {
     console.log('updateSettings called:', settings)
     return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SETTINGS, settings)
   }
