@@ -1,3 +1,14 @@
+/**
+ * ⚠️ 重要: このファイルはCommonJS形式(.cjs)で維持する必要があります
+ * 
+ * 理由:
+ * - ElectronのpreloadスクリプトはCommonJS形式でのみ確実に動作します
+ * - TypeScript/ESModule形式に変更するとModuleWrapエラーが発生します
+ * - このファイルを削除するとアプリケーションが起動しなくなります
+ * 
+ * 詳細: docs/PRELOAD_SCRIPT_REQUIREMENTS.md を参照
+ */
+
 const { contextBridge, ipcRenderer } = require('electron')
 
 console.log('=== Preload script started ===')

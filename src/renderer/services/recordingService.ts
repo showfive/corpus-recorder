@@ -330,7 +330,8 @@ export class RecordingService {
       analyser: !!this.analyser,
       isRecording: this.isRecording(),
       state: this.state,
-      canvasSize: `${canvas.width}x${canvas.height}`
+      canvasSize: `${canvas.width}x${canvas.height}`,
+      devicePixelRatio: window.devicePixelRatio
     })
     
     if (!this.analyser) {
@@ -340,6 +341,16 @@ export class RecordingService {
 
     try {
       const canvasCtx = canvas.getContext('2d')!
+      
+      // 論理サイズを取得（高DPI対応）
+      const logicalWidth = parseFloat(canvas.style.width) || canvas.width
+      const logicalHeight = parseFloat(canvas.style.height) || canvas.height
+      
+      this.logger.debug('Canvas dimensions', {
+        physicalSize: `${canvas.width}x${canvas.height}`,
+        logicalSize: `${logicalWidth}x${logicalHeight}`,
+        devicePixelRatio: window.devicePixelRatio
+      })
       
       const draw = () => {
         if (!this.isRecording()) {
@@ -356,22 +367,35 @@ export class RecordingService {
           return
         }
         
-        // キャンバスをクリア
+        // キャンバスをクリア（物理サイズ）
         canvasCtx.fillStyle = 'rgb(20, 20, 20)'
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height)
         
-        // 波形を描画
+        // 中央線を描画（論理座標使用）
+        canvasCtx.strokeStyle = 'rgba(100, 100, 100, 0.5)'
+        canvasCtx.lineWidth = 1
+        canvasCtx.beginPath()
+        canvasCtx.moveTo(0, logicalHeight / 2)
+        canvasCtx.lineTo(logicalWidth, logicalHeight / 2)
+        canvasCtx.stroke()
+        
+        // 波形を描画（論理座標使用）
         canvasCtx.lineWidth = 2
         canvasCtx.strokeStyle = 'rgb(34, 197, 94)'
         canvasCtx.beginPath()
         
-        const sliceWidth = canvas.width / dataArray.length
+        const sliceWidth = logicalWidth / dataArray.length
         let x = 0
         
         for (let i = 0; i < dataArray.length; i++) {
           // 128を中心として正規化（-1 to 1の範囲）
           const v = (dataArray[i] - 128) / 128.0
-          const y = (v * canvas.height / 2) + (canvas.height / 2)
+          const y = (v * logicalHeight / 2) + (logicalHeight / 2)
+          
+          // デバッグ: 最初の数値を出力
+          if (i < 5) {
+            console.log(`Waveform debug [${i}]: rawValue=${dataArray[i]}, normalizedV=${v.toFixed(3)}, y=${y.toFixed(1)}, centerY=${(logicalHeight / 2).toFixed(1)}`)
+          }
           
           if (i === 0) {
             canvasCtx.moveTo(x, y)

@@ -24,6 +24,18 @@ Corpus Recorderは、音声合成のためのコーパス（音声データセ�
 - **Vite** - 高速なビルドツール
 - **Web Audio API** - 音声録音・処理
 
+## ⚠️ 重要な技術的制約
+
+### Preload Script Requirements
+
+このプロジェクトでは、Electronのpreloadスクリプトとして**CommonJS形式の`electron/preload.cjs`**を使用する必要があります。
+
+- ❌ **削除禁止**: `electron/preload.cjs`ファイルを削除するとアプリケーションが起動しなくなります
+- ❌ **TypeScript化不可**: preloadスクリプトをTypeScript形式に変更することはできません
+- ⚠️ **技術的理由**: ElectronのpreloadコンテキストとESModuleの非互換性
+
+詳細については [`docs/PRELOAD_SCRIPT_REQUIREMENTS.md`](docs/PRELOAD_SCRIPT_REQUIREMENTS.md) を参照してください。
+
 ## 開発環境のセットアップ
 
 ### 必要な環境

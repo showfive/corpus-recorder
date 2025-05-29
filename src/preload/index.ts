@@ -1,7 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, type AudioFileMetadata, type TextFileReadResult, type AppSettings } from '../common/types'
 
 console.log('=== Preload script started ===')
+
+// IPC チャンネル名を直接定義（型依存を避ける）
+const IPC_CHANNELS = {
+  SELECT_DIRECTORY: 'select-directory',
+  SAVE_AUDIO_FILE: 'save-audio-file',
+  SAVE_AUDIO_FILE_WITH_METADATA: 'save-audio-file-with-metadata',
+  DELETE_AUDIO_FILE: 'delete-audio-file',
+  READ_TEXT_FILE: 'read-text-file',
+  GET_SETTINGS: 'get-settings',
+  UPDATE_SETTINGS: 'update-settings'
+} as const
 
 const electronAPI = {
   // ディレクトリ選択
@@ -9,13 +19,15 @@ const electronAPI = {
     console.log('selectDirectory called')
     return ipcRenderer.invoke(IPC_CHANNELS.SELECT_DIRECTORY)
   },
-    // 音声ファイルの保存
+  
+  // 音声ファイルの保存
   saveAudioFile: (arrayBuffer: ArrayBuffer, fileName: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
     console.log('saveAudioFile called:', fileName)
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE, arrayBuffer, fileName)
   },
-    // メタデータ付き音声ファイルの保存
-  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: AudioFileMetadata): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+  
+  // メタデータ付き音声ファイルの保存
+  saveAudioFileWithMetadata: (arrayBuffer: ArrayBuffer, metadata: any): Promise<{ success: boolean; filePath?: string; error?: string }> => {
     console.log('saveAudioFileWithMetadata called:', metadata.fileName)
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUDIO_FILE_WITH_METADATA, arrayBuffer, metadata)
   },
@@ -27,19 +39,19 @@ const electronAPI = {
   },
   
   // テキストファイルの読み込み
-  readTextFile: (): Promise<TextFileReadResult | null> => {
+  readTextFile: (): Promise<any> => {
     console.log('readTextFile called')
     return ipcRenderer.invoke(IPC_CHANNELS.READ_TEXT_FILE)
   },
   
   // 設定の取得
-  getSettings: (): Promise<Partial<AppSettings>> => {
+  getSettings: (): Promise<any> => {
     console.log('getSettings called')
     return ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS)
   },
   
   // 設定の更新
-  updateSettings: (settings: Partial<AppSettings>): Promise<Partial<AppSettings>> => {
+  updateSettings: (settings: any): Promise<any> => {
     console.log('updateSettings called:', settings)
     return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SETTINGS, settings)
   }
@@ -55,9 +67,11 @@ try {
 }
 
 // DOMが読み込まれた後に実行されることを確認
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('=== DOM loaded, checking ElectronAPI ===')
-  console.log('window.electronAPI:', typeof (window as any).electronAPI)
-})
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('=== DOM loaded, checking ElectronAPI ===')
+    console.log('window.electronAPI:', typeof (globalThis as any).electronAPI)
+  })
+}
 
 console.log('=== Preload script completed ===') 
