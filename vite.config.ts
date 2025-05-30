@@ -36,6 +36,21 @@ export default defineConfig({
   },
   base: './',
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'audio-worker': ['src/renderer/workers/audioProcessor.worker.ts']
+        }
+      }
+    }
+  },
+  worker: {
+    format: 'es',
+    plugins: () => [
+    ]
+  },
+  optimizeDeps: {
+    include: ['src/renderer/workers/audioProcessor.worker.ts']
   }
 }) 

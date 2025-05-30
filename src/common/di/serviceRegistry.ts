@@ -1,5 +1,6 @@
 import { container } from './container'
 import { RecordingService } from '../../renderer/services/recordingService'
+import { AudioWorkerService } from '../../renderer/services/audioWorkerService'
 
 /**
  * 全サービスをDIコンテナに登録
@@ -9,6 +10,12 @@ export function registerServices(): void {
   // RecordingServiceの登録
   container.register('recordingService', {
     constructor: RecordingService,
+    singleton: true
+  })
+
+  // AudioWorkerServiceの登録
+  container.register('audioWorkerService', {
+    constructor: AudioWorkerService,
     singleton: true
   })
 
@@ -33,7 +40,8 @@ export function registerMockServices(): void {
  */
 export function validateServiceRegistration(): boolean {
   const requiredServices = [
-    'recordingService'
+    'recordingService',
+    'audioWorkerService'
   ]
 
   return requiredServices.every(serviceName => 

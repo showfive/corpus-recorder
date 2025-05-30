@@ -2,6 +2,8 @@ import { RecordingState, AudioQualitySettings } from '../../common/types'
 import { blobToAudioBuffer, audioBufferToWav } from '../utils/audioUtils'
 import { createLogger } from '../../common/logger'
 import { errorHandler, ErrorCategory } from '../../common/errorHandler'
+import { container } from '../../common/di/container'
+import { AudioWorkerService } from './audioWorkerService'
 
 /**
  * 録音データ
@@ -25,6 +27,7 @@ export class RecordingService {
   private animationId: number | null = null
   private stream: MediaStream | null = null
   private logger = createLogger('RecordingService')
+  private audioWorkerService: AudioWorkerService | null = null
   private audioQualitySettings: AudioQualitySettings = {
     autoGainControl: false,
     noiseSuppression: false,
@@ -38,7 +41,31 @@ export class RecordingService {
   public onRecordingRetry: (() => void) | null = null
   public onTimeUpdate: ((seconds: number) => void) | null = null
 
-  private state: RecordingState = RecordingState.IDLE/**
+  private state: RecordingState = RecordingState.IDLE
+
+  constructor() {
+    // Web Worker サービスの遅延読み込み
+    this.initializeWorkerService()
+  }
+
+  /**
+   * Web Worker サービスを初期化（遅延読み込み）
+   */
+  private initializeWorkerService(): void {
+    try {
+      if (container.isRegistered('audioWorkerService')) {
+        this.audioWorkerService = container.resolve<AudioWorkerService>('audioWorkerService')
+        this.logger.info('AudioWorkerService initialized successfully')
+      } else {
+        this.logger.warn('AudioWorkerService not registered, falling back to main thread processing')
+      }
+    } catch (error) {
+      this.logger.error('Failed to initialize AudioWorkerService:', error)
+      this.logger.warn('Falling back to main thread audio processing')
+    }
+  }
+
+  /**
    * 録音を開始する
    */
   async startRecording(): Promise<void> {
@@ -119,7 +146,7 @@ export class RecordingService {
         })
         
         try {
-          // WebM/OggをAudioBufferに変換してからWAVに変換
+          // WebM/OggをAudioBufferに変換
           const audioBuffer = await blobToAudioBuffer(audioBlob, this.audioContext!)
           this.logger.debug('Audio buffer created', {
             channels: audioBuffer.numberOfChannels,
@@ -128,11 +155,35 @@ export class RecordingService {
             duration: audioBuffer.duration
           })
           
-          const wavArrayBuffer = audioBufferToWav(audioBuffer)
+          let wavArrayBuffer: ArrayBuffer
+          
+          // Web Workerが利用可能な場合は並列処理
+          if (this.audioWorkerService) {
+            this.logger.info('Using Web Worker for audio processing...')
+            
+            try {
+              wavArrayBuffer = await this.audioWorkerService.convertToWav(audioBuffer)
+              this.logger.info('Web Worker audio conversion completed', { 
+                size: wavArrayBuffer.byteLength 
+              })
+            } catch (workerError) {
+              this.logger.warn('Web Worker conversion failed, falling back to main thread:', workerError)
+              // フォールバック：メインスレッドで処理
+              wavArrayBuffer = audioBufferToWav(audioBuffer)
+            }
+          } else {
+            // Web Worker未使用時はメインスレッドで処理
+            this.logger.info('Using main thread for audio processing...')
+            wavArrayBuffer = audioBufferToWav(audioBuffer)
+          }
+          
           this.logger.info('Audio converted to WAV', { size: wavArrayBuffer.byteLength })
           
           const processingTime = this.logger.endPerformance('audio-processing')
-          this.logger.info('Audio processing completed', { processingTime: processingTime?.toFixed(2) + 'ms' })
+          this.logger.info('Audio processing completed', { 
+            processingTime: processingTime?.toFixed(2) + 'ms',
+            usingWorker: !!this.audioWorkerService
+          })
           
           // 録音完了通知
           if (this.onRecordingComplete) {
@@ -181,7 +232,7 @@ export class RecordingService {
       
       // タイマー開始
       this.startTimer()
-        } catch (error) {
+    } catch (error) {
       this.logger.error('Failed to start recording', { 
         error: error instanceof Error ? error.message : error,
         state: this.state 
@@ -201,6 +252,7 @@ export class RecordingService {
       }
     }
   }
+
   /**
    * 録音を停止する
    */
@@ -246,7 +298,9 @@ export class RecordingService {
         suggestions: ['録音を再試行してください']
       })
     }
-  }  /**
+  }
+
+  /**
    * 録音をやり直す
    */
   retryRecording(): void {
@@ -274,6 +328,7 @@ export class RecordingService {
       })
     }
   }
+
   /**
    * 状態をリセットする（外部から呼び出し可能）
    */
@@ -281,7 +336,9 @@ export class RecordingService {
     this.logger.info('Resetting recording state', { previousState: this.state })
     this.state = RecordingState.IDLE
     this.logger.debug('State reset to IDLE')
-  }  /**
+  }
+
+  /**
    * 波形データを取得する（波形表示用）
    */
   getWaveformData(): Uint8Array | null {
@@ -322,7 +379,9 @@ export class RecordingService {
    */
   isRecording(): boolean {
     return this.state === RecordingState.RECORDING
-  }  /**
+  }
+
+  /**
    * 波形描画を開始する
    */
   startWaveformDrawing(canvas: HTMLCanvasElement): void {
@@ -429,6 +488,7 @@ export class RecordingService {
       })
     }
   }
+
   /**
    * 波形描画を停止する
    */
@@ -462,7 +522,9 @@ export class RecordingService {
       clearInterval(this.timerInterval)
       this.timerInterval = null
     }
-  }  /**
+  }
+
+  /**
    * リソースをクリーンアップする（状態は変更しない）
    */
   private cleanupResources(): void {
@@ -502,6 +564,7 @@ export class RecordingService {
     this.cleanupResources()
     this.state = RecordingState.IDLE
   }
+
   /**
    * 音声品質設定を更新する
    */
