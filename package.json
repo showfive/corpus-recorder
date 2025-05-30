@@ -48,8 +48,10 @@
     "@element-plus/icons-vue": "^2.3.1",
     "electron-store": "^10.0.1",
     "element-plus": "^2.9.11",
+    "eventemitter3": "^5.0.1",
     "iconv-lite": "^0.6.3",
     "node-wav": "^0.0.2",
-    "pinia": "^3.0.2"
+    "pinia": "^3.0.2",
+    "zod": "^3.25.42"
   }
 }

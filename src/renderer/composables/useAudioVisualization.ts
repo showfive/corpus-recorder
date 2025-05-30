@@ -1,6 +1,9 @@
 import { ref, onUnmounted, readonly, computed } from 'vue'
 import { container } from '../../common/di/container'
 import { RecordingService } from '../services/recordingService'
+import { createLogger } from '../../common/logger'
+
+const logger = createLogger('AudioVisualization')
 
 export function useAudioVisualization() {
   const canvas = ref<HTMLCanvasElement | null>(null)
@@ -15,7 +18,10 @@ export function useAudioVisualization() {
 
   const startVisualization = (canvasElement: HTMLCanvasElement) => {
     if (!recordingService.isAnalyserReady()) {
-      console.warn('Analyser is not ready for visualization')
+      logger.warn('Analyser is not ready for visualization', {
+        component: 'AudioVisualization',
+        method: 'startVisualization'
+      })
       return
     }
 

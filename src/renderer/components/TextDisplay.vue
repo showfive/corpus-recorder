@@ -19,7 +19,7 @@
             @click="$emit('load-text-file')"
             class="compact-load-button"
           >
-            テキストを開く
+            コーパスを開く
           </el-button>
           <div class="progress-indicator" v-if="props.totalTexts > 0">
             <div class="progress-bar">
@@ -109,7 +109,7 @@
             @click="$emit('load-text-file')"
             class="large-load-button"
           >
-            📄 テキストファイルを開く
+            📄 コーパスを開く
           </el-button>
           <p class="empty-message">テキストファイルを開いて録音を開始してください</p>
         </div>

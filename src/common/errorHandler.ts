@@ -352,6 +352,256 @@ class ErrorHandler {
       recent24h
     }
   }
+
+  /**
+   * エラーパターンを分析
+   */
+  analyzeErrorPatterns(): ErrorPattern[] {
+    const patterns: Map<string, ErrorPattern> = new Map()
+    const now = new Date()
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+    this.errorHistory.forEach(error => {
+      const errorTime = new Date(error.timestamp)
+      const patternKey = `${error.category}:${error.technicalMessage?.split(':')[0] || 'unknown'}`
+      
+      if (!patterns.has(patternKey)) {
+        patterns.set(patternKey, {
+          category: error.category,
+          pattern: error.technicalMessage?.split(':')[0] || 'unknown',
+          frequency: 0,
+          lastOccurrence: error.timestamp,
+          severity: error.severity,
+          recentOccurrences: 0,
+          hourlyOccurrences: 0,
+          suggestedFix: this.generateSuggestedFix(error),
+          affectedComponents: new Set(),
+          errorIds: []
+        })
+      }
+
+      const pattern = patterns.get(patternKey)!
+      pattern.frequency++
+      pattern.errorIds.push(error.id)
+      
+      if (errorTime > oneHourAgo) {
+        pattern.hourlyOccurrences++
+      }
+      
+      if (errorTime > oneDayAgo) {
+        pattern.recentOccurrences++
+      }
+
+      if (error.context?.component) {
+        pattern.affectedComponents.add(error.context.component as string)
+      }
+
+      // より新しいエラーの重要度を採用
+      if (errorTime > new Date(pattern.lastOccurrence)) {
+        pattern.lastOccurrence = error.timestamp
+        pattern.severity = error.severity
+      }
+    })
+
+    return Array.from(patterns.values())
+      .filter(pattern => pattern.frequency > 1) // 2回以上発生したパターンのみ
+      .sort((a, b) => b.frequency - a.frequency) // 頻度順でソート
+  }
+
+  /**
+   * 高頻度エラーパターンを取得
+   */
+  getHighFrequencyPatterns(threshold: number = 3): ErrorPattern[] {
+    return this.analyzeErrorPatterns()
+      .filter(pattern => pattern.frequency >= threshold)
+  }
+
+  /**
+   * 最近のエラートレンドを分析
+   */
+  analyzeRecentTrends(): ErrorTrend[] {
+    const trends: ErrorTrend[] = []
+    const now = new Date()
+    const intervals = [
+      { name: '過去1時間', duration: 60 * 60 * 1000 },
+      { name: '過去6時間', duration: 6 * 60 * 60 * 1000 },
+      { name: '過去24時間', duration: 24 * 60 * 60 * 1000 }
+    ]
+
+    intervals.forEach(interval => {
+      const startTime = new Date(now.getTime() - interval.duration)
+      const errorsInInterval = this.errorHistory.filter(
+        error => new Date(error.timestamp) > startTime
+      )
+
+      const categoryCount: Record<string, number> = {}
+      const severityCount: Record<string, number> = {}
+
+      errorsInInterval.forEach(error => {
+        categoryCount[error.category] = (categoryCount[error.category] || 0) + 1
+        severityCount[error.severity] = (severityCount[error.severity] || 0) + 1
+      })
+
+      trends.push({
+        timeframe: interval.name,
+        totalErrors: errorsInInterval.length,
+        errorRate: errorsInInterval.length / (interval.duration / (60 * 60 * 1000)), // エラー/時間
+        topCategories: Object.entries(categoryCount)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 3)
+          .map(([category, count]) => ({ category, count })),
+        severityDistribution: severityCount,
+        isIncreasing: this.isErrorRateIncreasing(interval.duration)
+      })
+    })
+
+    return trends
+  }
+
+  /**
+   * エラー率が増加傾向にあるかを判定
+   */
+  private isErrorRateIncreasing(duration: number): boolean {
+    const now = new Date()
+    const currentPeriodStart = new Date(now.getTime() - duration)
+    const previousPeriodStart = new Date(now.getTime() - duration * 2)
+
+    const currentPeriodErrors = this.errorHistory.filter(
+      error => new Date(error.timestamp) > currentPeriodStart
+    ).length
+
+    const previousPeriodErrors = this.errorHistory.filter(
+      error => {
+        const errorTime = new Date(error.timestamp)
+        return errorTime > previousPeriodStart && errorTime <= currentPeriodStart
+      }
+    ).length
+
+    return currentPeriodErrors > previousPeriodErrors
+  }
+
+  /**
+   * 修復提案を生成
+   */
+  private generateSuggestedFix(error: AppError): string {
+    const category = error.category
+    const message = error.technicalMessage?.toLowerCase() || ''
+
+    // カテゴリ別の修復提案
+    switch (category) {
+      case ErrorCategory.RECORDING_START:
+        if (message.includes('permission') || message.includes('access')) {
+          return 'ブラウザの設定でマイクアクセスを許可してください'
+        }
+        if (message.includes('device') || message.includes('microphone')) {
+          return 'マイクが正しく接続されているか確認してください'
+        }
+        return 'マイクの設定を確認し、ブラウザを再起動してください'
+
+      case ErrorCategory.AUDIO_CONVERSION:
+        if (message.includes('decode') || message.includes('format')) {
+          return '音声形式が対応していない可能性があります。録音設定を確認してください'
+        }
+        if (message.includes('memory') || message.includes('buffer')) {
+          return 'メモリ不足の可能性があります。他のアプリケーションを閉じてください'
+        }
+        return '音声処理でエラーが発生しました。録音を再試行してください'
+
+      case ErrorCategory.FILE_WRITE:
+        if (message.includes('permission') || message.includes('access')) {
+          return '保存先フォルダの書き込み権限を確認してください'
+        }
+        if (message.includes('space') || message.includes('disk')) {
+          return 'ディスク容量が不足している可能性があります'
+        }
+        return 'ファイル保存でエラーが発生しました。保存先を変更してください'
+
+      case ErrorCategory.IPC_COMMUNICATION:
+        return 'アプリケーション内部の通信エラーです。アプリケーションを再起動してください'
+
+      case ErrorCategory.UI_INTERACTION:
+        if (message.includes('canvas') || message.includes('render')) {
+          return 'グラフィック表示でエラーが発生しました。ページを再読み込みしてください'
+        }
+        return 'UI操作でエラーが発生しました。ページを再読み込みしてください'
+
+      default:
+        return 'システムエラーが発生しました。アプリケーションを再起動してください'
+    }
+  }
+
+  /**
+   * システム健全性レポートを生成
+   */
+  generateHealthReport(): SystemHealthReport {
+    const stats = this.getErrorStats()
+    const patterns = this.analyzeErrorPatterns()
+    const trends = this.analyzeRecentTrends()
+    const criticalErrors = this.errorHistory.filter(
+      error => error.severity === ErrorSeverity.CRITICAL
+    )
+
+    // 健全性スコア計算（0-100）
+    let healthScore = 100
+    
+    // 最近のエラー数による減点
+    healthScore -= Math.min(stats.recent24h * 2, 30)
+    
+    // 高頻度パターンによる減点
+    const highFreqPatterns = patterns.filter(p => p.frequency >= 5)
+    healthScore -= highFreqPatterns.length * 10
+    
+    // 致命的エラーによる減点
+    healthScore -= criticalErrors.length * 15
+    
+    // エラー率増加による減点
+    const increasingTrends = trends.filter(t => t.isIncreasing)
+    healthScore -= increasingTrends.length * 5
+
+    healthScore = Math.max(0, healthScore)
+
+    // 健全性レベル判定
+    let healthLevel: 'excellent' | 'good' | 'warning' | 'critical'
+    if (healthScore >= 90) healthLevel = 'excellent'
+    else if (healthScore >= 70) healthLevel = 'good'
+    else if (healthScore >= 50) healthLevel = 'warning'
+    else healthLevel = 'critical'
+
+    // 推奨アクション生成
+    const recommendations: string[] = []
+    
+    if (stats.recent24h > 10) {
+      recommendations.push('最近のエラー発生率が高いため、システムの安定性を確認してください')
+    }
+    
+    if (highFreqPatterns.length > 0) {
+      recommendations.push(`${highFreqPatterns.length}個の高頻度エラーパターンが検出されました`)
+    }
+    
+    if (criticalErrors.length > 0) {
+      recommendations.push('致命的エラーが発生しています。緊急対応が必要です')
+    }
+    
+    if (increasingTrends.length > 0) {
+      recommendations.push('エラー発生率が増加傾向にあります。予防的対策を検討してください')
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('システムは正常に動作しています')
+    }
+
+    return {
+      healthScore,
+      healthLevel,
+      totalErrors: stats.total,
+      recentErrors: stats.recent24h,
+      criticalErrors: criticalErrors.length,
+      highFrequencyPatterns: highFreqPatterns.length,
+      recommendations,
+      lastUpdated: new Date().toISOString()
+    }
+  }
 }
 
 // シングルトンインスタンス
@@ -371,4 +621,38 @@ export function createCategoryErrorHandler(category: ErrorCategory) {
     create: (message: string, context: Omit<ErrorContext, 'category'>) =>
       errorHandler.createError(message, { ...context, category })
   }
+}
+
+// 型定義を追加
+export interface ErrorPattern {
+  category: ErrorCategory
+  pattern: string
+  frequency: number
+  lastOccurrence: string
+  severity: ErrorSeverity
+  recentOccurrences: number
+  hourlyOccurrences: number
+  suggestedFix: string
+  affectedComponents: Set<string>
+  errorIds: string[]
+}
+
+export interface ErrorTrend {
+  timeframe: string
+  totalErrors: number
+  errorRate: number
+  topCategories: Array<{ category: string; count: number }>
+  severityDistribution: Record<string, number>
+  isIncreasing: boolean
+}
+
+export interface SystemHealthReport {
+  healthScore: number
+  healthLevel: 'excellent' | 'good' | 'warning' | 'critical'
+  totalErrors: number
+  recentErrors: number
+  criticalErrors: number
+  highFrequencyPatterns: number
+  recommendations: string[]
+  lastUpdated: string
 }

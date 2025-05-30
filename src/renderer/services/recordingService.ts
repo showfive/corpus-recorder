@@ -107,23 +107,47 @@ export class RecordingService {
       })
       
       // AudioContextの初期化
-      this.logger.debug('Initializing AudioContext...')
+      this.logger.info('Initializing AudioContext...')
       this.audioContext = new AudioContext()
       const source = this.audioContext.createMediaStreamSource(this.stream)
       
-      // アナライザーの設定（波形表示用）
-      this.analyser = this.audioContext.createAnalyser()
-      this.analyser.fftSize = 2048
-      source.connect(this.analyser)
-      
-      this.logger.debug('Analyser created and connected', {
-        fftSize: this.analyser.fftSize,
-        frequencyBinCount: this.analyser.frequencyBinCount,
-        sampleRate: this.audioContext.sampleRate
+      this.logger.info('MediaStreamSource created', {
+        contextState: this.audioContext.state,
+        sampleRate: this.audioContext.sampleRate,
+        streamActive: this.stream.active,
+        streamTracks: this.stream.getAudioTracks().length
       })
       
+      // アナライザーの設定（波形表示用）
+      try {
+        this.logger.info('Creating AnalyserNode...')
+        this.analyser = this.audioContext.createAnalyser()
+        this.analyser.fftSize = 2048
+        
+        this.logger.info('Connecting source to analyser...')
+        source.connect(this.analyser)
+        
+        this.logger.info('Analyser created and connected', {
+          fftSize: this.analyser.fftSize,
+          frequencyBinCount: this.analyser.frequencyBinCount,
+          sampleRate: this.audioContext.sampleRate,
+          analyserExists: !!this.analyser,
+          contextState: this.audioContext.state
+        })
+      } catch (analyserError) {
+        this.logger.error('Failed to create or connect analyser', {
+          error: analyserError instanceof Error ? analyserError.message : analyserError,
+          stack: analyserError instanceof Error ? analyserError.stack : undefined,
+          contextState: this.audioContext?.state,
+          streamActive: this.stream?.active
+        })
+        
+        // Analyser作成に失敗してもRecordingは継続
+        this.analyser = null
+      }
+      
       // MediaRecorderの設定
-      this.logger.debug('Setting up MediaRecorder...')
+      this.logger.info('Setting up MediaRecorder...')
       this.mediaRecorder = new MediaRecorder(this.stream)
       this.audioChunks = []
       
@@ -159,22 +183,62 @@ export class RecordingService {
           
           // Web Workerが利用可能な場合は並列処理
           if (this.audioWorkerService) {
-            this.logger.info('Using Web Worker for audio processing...')
+            this.logger.info('Using Web Worker for audio processing', {
+              bufferChannels: audioBuffer.numberOfChannels,
+              bufferSampleRate: audioBuffer.sampleRate,
+              bufferLength: audioBuffer.length,
+              bufferDuration: audioBuffer.duration
+            })
             
             try {
+              this.logger.startPerformance('worker-conversion')
               wavArrayBuffer = await this.audioWorkerService.convertToWav(audioBuffer)
+              const workerTime = this.logger.endPerformance('worker-conversion')
+              
               this.logger.info('Web Worker audio conversion completed', { 
-                size: wavArrayBuffer.byteLength 
+                outputSize: wavArrayBuffer.byteLength,
+                conversionTime: workerTime?.toFixed(2) + 'ms',
+                compressionRatio: (wavArrayBuffer.byteLength / (audioBuffer.length * audioBuffer.numberOfChannels * 4)).toFixed(2)
               })
             } catch (workerError) {
-              this.logger.warn('Web Worker conversion failed, falling back to main thread:', workerError)
-              // フォールバック：メインスレッドで処理
+              this.logger.warn('Web Worker conversion failed, falling back to main thread', {
+                workerError: workerError instanceof Error ? workerError.message : workerError,
+                fallbackReason: 'worker_processing_error',
+                bufferInfo: {
+                  channels: audioBuffer.numberOfChannels,
+                  sampleRate: audioBuffer.sampleRate,
+                  length: audioBuffer.length
+                }
+              })
+              
+              // フォールバック実行前のメトリクス記録
+              this.logger.startPerformance('fallback-conversion')
               wavArrayBuffer = audioBufferToWav(audioBuffer)
+              const fallbackTime = this.logger.endPerformance('fallback-conversion')
+              
+              this.logger.info('Fallback conversion completed', {
+                outputSize: wavArrayBuffer.byteLength,
+                fallbackTime: fallbackTime?.toFixed(2) + 'ms',
+                fallbackSuccess: true
+              })
             }
           } else {
             // Web Worker未使用時はメインスレッドで処理
-            this.logger.info('Using main thread for audio processing...')
+            this.logger.info('Using main thread for audio processing', {
+              reason: 'worker_not_available',
+              bufferChannels: audioBuffer.numberOfChannels,
+              bufferSampleRate: audioBuffer.sampleRate,
+              bufferLength: audioBuffer.length
+            })
+            
+            this.logger.startPerformance('main-thread-conversion')
             wavArrayBuffer = audioBufferToWav(audioBuffer)
+            const mainThreadTime = this.logger.endPerformance('main-thread-conversion')
+            
+            this.logger.info('Main thread conversion completed', {
+              outputSize: wavArrayBuffer.byteLength,
+              conversionTime: mainThreadTime?.toFixed(2) + 'ms'
+            })
           }
           
           this.logger.info('Audio converted to WAV', { size: wavArrayBuffer.byteLength })
@@ -221,6 +285,15 @@ export class RecordingService {
       this.logger.info('Recording started successfully', {
         state: this.state,
         hasAnalyser: !!this.analyser,
+        analyserDetails: this.analyser ? {
+          fftSize: this.analyser.fftSize,
+          frequencyBinCount: this.analyser.frequencyBinCount,
+          smoothingTimeConstant: this.analyser.smoothingTimeConstant,
+          minDecibels: this.analyser.minDecibels,
+          maxDecibels: this.analyser.maxDecibels
+        } : null,
+        audioContextState: this.audioContext?.state,
+        streamActive: this.stream?.active,
         startTime: this.startTime,
         startupTime: startupTime?.toFixed(2) + 'ms'
       })

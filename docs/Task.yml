@@ -9,21 +9,26 @@
 Task:
   category_types: 
     - "Bug Fix"
-    - "Issue Fix"
     - "Issue Investigation"
     - "Feature Development"
+    - "Feature Verification"
+    - "Feature Fix"
     - "Documentation"
     - "Refactoring"
     - "Planning"
     - "Analysis"
     - "Specification Change"
     - "Other"
-  this_task_category: "Specification Change"
+  this_task_category: "Refactoring"
   description: |
-    読み上げテキストカードのデザインを改善する。
-    - カードタイトル表示は削除
-    - "テキストを開く"ボタンはプログレスバーと縦並びになっているが、横並びにして左に配置
-    - ヘッダ内の要素は1行で表示
+    音声コントロールカードに実装が重複している部分がある。
+    これを修正する。
+    - src/renderer/components/RecordingControls.vue
+    - src/renderer/components/RecordingControls/WaveformDisplay.vue
+    - 上記の2つのコンポーネントに実装が重複している部分がある。
+    - 重複部分は録音中の波形表示部分の実装と思われる
+    - リファクタリングによりwaveformdisplay.vueに分離した経緯があるためこれを元に重複部分を削除する。
+    
   priority: "High"
   due_date: "2025-05-30"
   tags:

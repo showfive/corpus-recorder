@@ -12,6 +12,9 @@ import {
 } from '../../common/types'
 import { electronService } from '../services/electronService'
 import { recordingService } from '../services/recordingService'
+import { createLogger } from '../../common/logger'
+
+const logger = createLogger('RecordingStore')
 
 // 型定義をファイル先頭付近に追加
 declare global {
@@ -69,12 +72,19 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
         audioSettings.value = settings.audioQuality
       }
     } catch (error) {
-      console.error('Failed to load settings:', error)
+      logger.error('Failed to load settings', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'loadSettings'
+      })
       ElMessage.error('設定の読み込みに失敗しました')
     }
-  }  /**
+  }
+
+  /**
    * 音声品質設定を更新する
-   */  const updateAudioSetting = async (key: keyof AudioQualitySettings, value: boolean): Promise<void> => {
+   */
+  const updateAudioSetting = async (key: keyof AudioQualitySettings, value: boolean): Promise<void> => {
     try {
       audioSettings.value = {
         ...audioSettings.value,
@@ -97,7 +107,13 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       
       ElMessage.success('音声設定を更新しました')
     } catch (error) {
-      console.error('Failed to update audio setting:', error)
+      logger.error('Failed to update audio setting', {
+        error: error instanceof Error ? error.message : error,
+        key,
+        value,
+        component: 'RecordingStore',
+        method: 'updateAudioSetting'
+      })
       ElMessage.error('音声設定の更新に失敗しました')
     }
   }
@@ -114,7 +130,11 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
         ElMessage.success('保存先を設定しました')
       }
     } catch (error) {
-      console.error('Failed to select directory:', error)
+      logger.error('Failed to select directory', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'selectDirectory'
+      })
       ElMessage.error('ディレクトリの選択に失敗しました')
     }
   }
@@ -148,10 +168,15 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
         })
       }
     } catch (error) {
-      console.error('Failed to load text file:', error)
+      logger.error('Failed to load text file', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'loadTextFile'
+      })
       ElMessage.error('テキストファイルの読み込みに失敗しました')
     }
   }
+
   /**
    * 録音を開始する
    */
@@ -164,11 +189,16 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       await recordingService.startRecording()
       recordingState.value = RecordingState.RECORDING
     } catch (error) {
-      console.error('Failed to start recording:', error)
+      logger.error('Failed to start recording', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'startRecording'
+      })
       recordingState.value = RecordingState.IDLE
       ElMessage.error('録音の開始に失敗しました')
     }
   }
+
   /**
    * 録音を停止する
    */
@@ -180,6 +210,7 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
     recordingState.value = RecordingState.PROCESSING
     recordingService.stopRecording()
   }
+
   /**
    * 録音を完了する（録音データを保存）
    */
@@ -235,13 +266,18 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
         throw new Error(result.error || '保存に失敗しました')
       }
     } catch (error) {
-      console.error('Failed to save recording:', error)
+      logger.error('Failed to save recording', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'completeRecording'
+      })
       ElMessage.error('録音の保存に失敗しました')
     } finally {
       recordingState.value = RecordingState.IDLE
       recordingService.resetState()
     }
   }
+
   /**
    * 録音をやり直す
    */
@@ -279,7 +315,12 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
               recordings.value.splice(index, 1)
             }
           } else {
-            console.warn(`Failed to delete recording file: ${recording.filePath}`, result.error)
+            logger.warn('Failed to delete recording file', {
+              filePath: recording.filePath,
+              error: result.error,
+              component: 'RecordingStore',
+              method: 'retryRecording'
+            })
             // ファイル削除に失敗してもメモリ上のリストからは削除（ファイルが既に存在しない可能性）
             const index = recordings.value.findIndex(r => r.id === recording.id)
             if (index > -1) {
@@ -297,7 +338,11 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       await startRecording()
       
     } catch (error) {
-      console.error('Failed to retry recording:', error)
+      logger.error('Failed to retry recording', {
+        error: error instanceof Error ? error.message : error,
+        component: 'RecordingStore',
+        method: 'retryRecording'
+      })
       ElMessage.error('やり直し処理に失敗しました')
       
       // エラーが発生しても状態はリセット
@@ -317,7 +362,12 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       try {
         await electronService.updateSettings({ lastTextIndex: index })
       } catch (error) {
-        console.error('Failed to save text index:', error)
+        logger.error('Failed to save text index', {
+          error: error instanceof Error ? error.message : error,
+          index,
+          component: 'RecordingStore',
+          method: 'navigateToText'
+        })
       }
     }
   }
@@ -346,10 +396,17 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
         throw new Error(result.error || '削除に失敗しました')
       }
     } catch (error) {
-      console.error('Failed to delete recording:', error)
+      logger.error('Failed to delete recording', {
+        error: error instanceof Error ? error.message : error,
+        recordingId: recording.id,
+        filePath: recording.filePath,
+        component: 'RecordingStore',
+        method: 'deleteRecording'
+      })
       ElMessage.error('録音の削除に失敗しました')
     }
   }
+
   /**
    * 次のテイク番号を取得
    */
@@ -357,6 +414,7 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
     const existingRecordings = recordings.value.filter(r => r.textId === textId)
     return existingRecordings.length + 1
   }
+
   /**
    * ファイル名を生成する
    */
@@ -439,7 +497,13 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       ElMessage.success('再生を開始しました')
       
     } catch (error) {
-      console.error('Failed to play recording:', error)
+      logger.error('Failed to play recording', {
+        error: error instanceof Error ? error.message : error,
+        recordingId: recording.id,
+        filePath: recording.filePath,
+        component: 'RecordingStore',
+        method: 'playRecording'
+      })
       ElMessage.error('音声の再生に失敗しました')
       
       // エラー時もメモリ上のリストから削除

@@ -1,5 +1,5 @@
 import { container } from './container'
-import { RecordingService } from '../../renderer/services/recordingService'
+import { RecordingService, recordingService } from '../../renderer/services/recordingService'
 import { AudioWorkerService } from '../../renderer/services/audioWorkerService'
 
 /**
@@ -7,11 +7,8 @@ import { AudioWorkerService } from '../../renderer/services/audioWorkerService'
  * アプリケーション起動時に呼び出される
  */
 export function registerServices(): void {
-  // RecordingServiceの登録
-  container.register('recordingService', {
-    constructor: RecordingService,
-    singleton: true
-  })
+  // RecordingServiceの登録（既存のシングルトンインスタンスを使用）
+  container.registerInstance('recordingService', recordingService)
 
   // AudioWorkerServiceの登録
   container.register('audioWorkerService', {

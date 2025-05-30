@@ -7,12 +7,14 @@ import Store from 'electron-store'
 import { readAndParseTextFile, getSupportedExtensions } from './services/textFileService'
 import { AudioFileMetadata, IPC_CHANNELS, AppSettings, TextFileFormat } from '../common/types'
 import { addMetadataToWav } from './utils/wavMetadata'
+// 新しい統一設定システムのインポート
+import { settingsService, getSettings, updateSettings } from './services/settingsService'
 
 // ESモジュールで__dirnameを取得
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// electron-storeの初期化
+// レガシーelectron-store（後方互換性のため残存）
 const store = new Store<AppSettings>({
   defaults: {
     recordingDirectory: path.join(app.getPath('documents'), 'CorpusRecordings')
@@ -133,13 +135,18 @@ app.on('window-all-closed', () => {
 // アプリケーション終了時にtmp.wavファイルを削除
 app.on('before-quit', async () => {
   try {
-    const recordingDir = store.get('recordingDirectory')
-    const tmpFilePath = path.join(recordingDir, 'tmp.wav')
+    // 新しい統一設定システムを使用
+    const settings = getSettings()
+    const recordingDir = settings.recordingDirectory
     
-    // tmp.wavファイルが存在するかチェック
-    if (fs.existsSync(tmpFilePath)) {
-      await fsPromises.unlink(tmpFilePath)
-      console.log('tmp.wav file deleted on app quit')
+    if (recordingDir) {
+      const tmpFilePath = path.join(recordingDir, 'tmp.wav')
+      
+      // tmp.wavファイルが存在するかチェック
+      if (fs.existsSync(tmpFilePath)) {
+        await fsPromises.unlink(tmpFilePath)
+        console.log('tmp.wav file deleted on app quit')
+      }
     }
   } catch (error) {
     console.error('Failed to delete tmp.wav file on app quit:', error)
@@ -157,7 +164,8 @@ ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async () => {
   
   if (!result.canceled && result.filePaths.length > 0) {
     const selectedPath = result.filePaths[0]
-    store.set('recordingDirectory', selectedPath)
+    // 新しい統一設定システムを使用
+    updateSettings({ recordingDirectory: selectedPath })
     return selectedPath
   }
   
@@ -167,7 +175,9 @@ ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async () => {
 // 音声ファイルの保存
 ipcMain.handle(IPC_CHANNELS.SAVE_AUDIO_FILE, async (_, arrayBuffer: ArrayBuffer, fileName: string) => {
   try {
-    const recordingDir = store.get('recordingDirectory')
+    // 新しい統一設定システムを使用
+    const settings = getSettings()
+    const recordingDir = settings.recordingDirectory || path.join(app.getPath('documents'), 'CorpusRecordings')
     
     // ディレクトリが存在しない場合は作成
     if (!fs.existsSync(recordingDir)) {
@@ -188,7 +198,9 @@ ipcMain.handle(IPC_CHANNELS.SAVE_AUDIO_FILE, async (_, arrayBuffer: ArrayBuffer,
 // メタデータ付き音声ファイルの保存
 ipcMain.handle(IPC_CHANNELS.SAVE_AUDIO_FILE_WITH_METADATA, async (_, arrayBuffer: ArrayBuffer, metadata: AudioFileMetadata) => {
   try {
-    const recordingDir = store.get('recordingDirectory')
+    // 新しい統一設定システムを使用
+    const settings = getSettings()
+    const recordingDir = settings.recordingDirectory || path.join(app.getPath('documents'), 'CorpusRecordings')
     
     // ディレクトリが存在しない場合は作成
     if (!fs.existsSync(recordingDir)) {
@@ -235,7 +247,8 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
     try {
       // textFileService を使用してファイルを読み込み、解析する
       const parseResult = await readAndParseTextFile(filePath)
-      store.set('lastOpenedTextFile', filePath) // 最後に開いたファイルを保存
+      // 新しい統一設定システムを使用
+      updateSettings({ lastOpenedTextFile: filePath })
       return parseResult // 解析結果全体を返す
     } catch (error) {
       console.error('Failed to read or parse text file:', error)
@@ -253,13 +266,13 @@ ipcMain.handle(IPC_CHANNELS.READ_TEXT_FILE, async () => {
 
 // 設定の取得
 ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
-  return store.store
+  // 新しい統一設定システムを使用
+  return getSettings()
 })
 
 // 設定の更新
 ipcMain.handle(IPC_CHANNELS.UPDATE_SETTINGS, (_, settings: Partial<AppSettings>) => {
-  Object.entries(settings).forEach(([key, value]) => {
-    store.set(key as keyof AppSettings, value)
-  })
-  return store.store
+  // 新しい統一設定システムを使用
+  updateSettings(settings)
+  return getSettings()
 })

@@ -1,6 +1,9 @@
 import { promises as fsPromises } from 'fs'
-import path from 'path'
+import * as path from 'path'
 import { CorpusText, RubySegment, TextFileReadResult, TextFileFormat } from '../../common/types'
+import { createLogger } from '../../common/logger'
+
+const logger = createLogger('TextFileService')
 
 // フォーマット検出の結果
 interface FormatDetectionResult {
@@ -12,84 +15,88 @@ interface FormatDetectionResult {
  * テキストファイルのフォーマットを検出する
  */
 function detectFormat(content: string): FormatDetectionResult {
-  console.log('[textFileService] detectFormat received content (first 500 chars):', content.substring(0, 500));
   const lines = content.split('\n').filter(line => line.trim());
-  console.log('[textFileService] detectFormat: Number of non-empty lines:', lines.length);
+  const totalLines = lines.length;
+  const threshold = Math.max(1, Math.floor(totalLines * 0.7)); // 70%以上がマッチすれば該当フォーマットと判定
 
-  if (lines.length === 0) {
-    console.log('[textFileService] detectFormat: No lines, returning PLAIN_TEXT');
-    return { format: TextFileFormat.PLAIN_TEXT, confidence: 1.0 };
-  }
+  logger.debug('Format detection started', {
+    totalLines,
+    threshold,
+    component: 'TextFileService',
+    method: 'detectFormat'
+  })
 
-  const threshold = lines.length * 0.8;
-  console.log('[textFileService] detectFormat: Detection threshold (80% of lines):', threshold);
+  // Rohanフォーマットの検出
+  const rohanRegex = /^[^:]+:[^,]+,[ァ-ヴー、。]+$/;
+  const rohanMatchesCount = lines.filter(line => rohanRegex.test(line)).length;
 
-  // Rohanコーパス形式の検出
-  const rohanRegex = /^([^:]+):(.*[(（)].*),([ァ-ヴー、。]+[。？]?)$/; // 「、」も許容
-  let rohanMatchesCount = 0;
-  const nonMatchingRohanLines: string[] = [];
+  // ITAフォーマットの検出
+  const itaRegex = /^[^:]+:[^,]+,[ァ-ヴー、。]+[。？]?$/;
+  const itaMatchesCount = lines.filter(line => itaRegex.test(line)).length;
+  const nonMatchingItaLines = lines.filter(line => !itaRegex.test(line));
 
-  // ITAコーパス形式の検出
-  const itaRegex = /^([^:]+):(.+),([ァ-ヴー、。]+[。？]?)$/; // ★修正: 読み仮名に「。」を許可、末尾に「？」を許可
-  let itaMatchesCount = 0;
-  const nonMatchingItaLines: string[] = [];
+  logger.debug('Format detection results', {
+    rohanMatchesCount,
+    itaMatchesCount,
+    nonMatchingItaLinesCount: nonMatchingItaLines.length,
+    component: 'TextFileService',
+    method: 'detectFormat'
+  })
 
-  lines.forEach(line => {
-    if (rohanRegex.test(line)) {
-      rohanMatchesCount++;
-    } else {
-      // Rohan にマッチしなかったものを記録 (ログ出力は10件まで)
-      if (nonMatchingRohanLines.length < 10) {
-        nonMatchingRohanLines.push(line);
-      }
-    }
-
-    if (itaRegex.test(line)) {
-      itaMatchesCount++;
-    } else {
-      // ITA にマッチしなかったものを記録 (ログ出力は10件まで)
-      if (nonMatchingItaLines.length < 10) {
-        nonMatchingItaLines.push(line);
-      }
-    }
-  });
-
-  console.log('[textFileService] detectFormat: Rohan matches count:', rohanMatchesCount);
-  if (rohanMatchesCount <= threshold && nonMatchingRohanLines.length > 0) {
-    console.log('[textFileService] detectFormat: First few non-matching Rohan lines (up to 10):');
-    nonMatchingRohanLines.forEach(l => console.log(l));
-  }
-
-  console.log('[textFileService] detectFormat: ITA matches count:', itaMatchesCount);
   if (itaMatchesCount <= threshold && nonMatchingItaLines.length > 0) {
-    console.log('[textFileService] detectFormat: First few non-matching ITA lines (up to 10):');
-    nonMatchingItaLines.forEach(l => console.log(l));
+    logger.debug('Non-matching ITA lines detected', {
+      sampleLines: nonMatchingItaLines.slice(0, 10),
+      component: 'TextFileService',
+      method: 'detectFormat'
+    })
   }
 
   if (rohanMatchesCount > threshold) {
-    console.log('[textFileService] detectFormat: Detected ROHAN_FORMAT');
+    logger.info('Detected ROHAN_FORMAT', {
+      matchesCount: rohanMatchesCount,
+      component: 'TextFileService',
+      method: 'detectFormat'
+    })
     // Rohanと判定されても、Rohanにマッチしなかった行があれば出力（デバッグ用）
     const stillNotMatchingRohan = lines.filter(line => !rohanRegex.test(line));
     if (stillNotMatchingRohan.length > 0) {
-      console.log(`[textFileService] detectFormat: (ROHAN detected) Still ${stillNotMatchingRohan.length} non-matching Rohan lines. First few (up to 10):`);
-      stillNotMatchingRohan.slice(0, 10).forEach(l => console.log(l));
+      logger.debug('Non-matching Rohan lines found', {
+        nonMatchingCount: stillNotMatchingRohan.length,
+        sampleLines: stillNotMatchingRohan.slice(0, 10),
+        component: 'TextFileService',
+        method: 'detectFormat'
+      })
     }
     return { format: TextFileFormat.ROHAN_FORMAT, confidence: 0.9 };
   }
 
   if (itaMatchesCount > threshold) {
-    console.log('[textFileService] detectFormat: Detected ITA_FORMAT');
+    logger.info('Detected ITA_FORMAT', {
+      matchesCount: itaMatchesCount,
+      component: 'TextFileService',
+      method: 'detectFormat'
+    })
     // ITAと判定されても、ITAにマッチしなかった行があれば出力（デバッグ用）
     const stillNotMatchingIta = lines.filter(line => !itaRegex.test(line));
     if (stillNotMatchingIta.length > 0) {
-      console.log(`[textFileService] detectFormat: (ITA detected) Still ${stillNotMatchingIta.length} non-matching ITA lines. First few (up to 10):`);
-      stillNotMatchingIta.slice(0, 10).forEach(l => console.log(l));
+      logger.debug('Non-matching ITA lines found', {
+        nonMatchingCount: stillNotMatchingIta.length,
+        sampleLines: stillNotMatchingIta.slice(0, 10),
+        component: 'TextFileService',
+        method: 'detectFormat'
+      })
     }
     return { format: TextFileFormat.ITA_FORMAT, confidence: 0.9 };
   }
 
   // デフォルトはプレーンテキスト
-  console.log(`[textFileService] detectFormat: Defaulting to PLAIN_TEXT because Rohan matches (${rohanMatchesCount}) and ITA matches (${itaMatchesCount}) did not exceed threshold (${threshold})`);
+  logger.info('Defaulting to PLAIN_TEXT', {
+    rohanMatchesCount,
+    itaMatchesCount,
+    threshold,
+    component: 'TextFileService',
+    method: 'detectFormat'
+  })
   return { format: TextFileFormat.PLAIN_TEXT, confidence: 0.5 };
 }
 
@@ -129,7 +136,12 @@ function parseItaFormat(content: string): CorpusText[] {
         reading
       });
     } else {
-      console.warn(`[textFileService] parseItaFormat: Line did not match ITA format and will be skipped: ${line}`);
+      logger.warn('Line did not match ITA format and will be skipped', {
+        line,
+        lineIndex: index,
+        component: 'TextFileService',
+        method: 'parseItaFormat'
+      })
     }
   });
 
@@ -146,7 +158,9 @@ function parseRohanFormat(content: string): CorpusText[] {
     const label = parts[0];
     const textAndReading = parts[1].split(',');
     const rawText = textAndReading[0];
-    const reading = textAndReading[1];    const rubyText: RubySegment[] = [];
+    const reading = textAndReading[1];
+
+    const rubyText: RubySegment[] = [];
     let lastIndex = 0;
     // 正規表現を修正: ルビの親文字を漢字に限定
     const regex = /([\u4E00-\u9FFF]+)\(([^)]+)\)/g;
@@ -178,7 +192,12 @@ function parseRohanFormat(content: string): CorpusText[] {
       }
     }
 
-    console.log(`[textFileService] rubyText for line ${index}:`, rubyText);
+    logger.debug('Ruby text parsed', {
+      lineIndex: index,
+      rubyText,
+      component: 'TextFileService',
+      method: 'parseRohanFormat'
+    })
 
     return {
       id: `text-${index}`,
@@ -216,9 +235,18 @@ export async function readAndParseTextFile(filePath: string): Promise<TextFileRe
     // BOMの除去 (U+FEFF)
     if (content.charCodeAt(0) === 0xFEFF) {
       content = content.substring(1);
-      console.log('[textFileService] readAndParseTextFile: BOM detected and removed.');
+      logger.info('BOM detected and removed', {
+        filePath,
+        component: 'TextFileService',
+        method: 'readAndParseTextFile'
+      })
     }
-    console.log('[textFileService] readAndParseTextFile: Content read (first 500 chars after BOM check):', content.substring(0, 500));
+    logger.debug('Content read successfully', {
+      filePath,
+      contentPreview: content.substring(0, 500),
+      component: 'TextFileService',
+      method: 'readAndParseTextFile'
+    })
     const detection = detectFormat(content);
     const texts = parseTextContent(content, detection.format);
 
@@ -229,7 +257,12 @@ export async function readAndParseTextFile(filePath: string): Promise<TextFileRe
       format: detection.format
     };
   } catch (error) {
-    console.error(`[textFileService] Failed to read or parse text file at ${filePath}:`, error); // ★エラーログにファイルパスを追加
+    logger.error('Failed to read or parse text file', {
+      filePath,
+      error: error instanceof Error ? error.message : error,
+      component: 'TextFileService',
+      method: 'readAndParseTextFile'
+    })
     // TextFileResult に合わせてエラーをラップするか、呼び出し元で処理するためここでは投げ返す
     // 今回は呼び出し元 (main/index.ts) で catch してエラーオブジェクトを返しているので、そのまま投げ返す
     throw new Error(`Failed to read text file: ${error instanceof Error ? error.message : 'Unknown error'}`)

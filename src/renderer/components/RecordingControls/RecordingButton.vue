@@ -1,26 +1,20 @@
 <template>
   <div class="control-buttons">
-    <el-button
-      v-if="recordingState === RecordingState.IDLE"
-      type="primary"
-      size="default"
-      :icon="Microphone"
-      @click="emit('start-recording')"
-      class="record-button"
-    >
-      録音開始
-    </el-button>
-
-    <el-button
-      v-if="recordingState === RecordingState.RECORDING"
-      type="danger"
-      size="default"
-      :icon="VideoPause"
-      @click="emit('stop-recording')"
-      class="stop-button pulse"
-    >
-      録音停止
-    </el-button>
+    <ToggleButton
+      :is-active="recordingState === RecordingState.RECORDING"
+      active-text="録音停止"
+      inactive-text="録音開始"
+      :active-icon="VideoPause"
+      :inactive-icon="Microphone"
+      active-button-type="danger"
+      inactive-button-type="primary"
+      :size="size"
+      :loading="recordingState === RecordingState.PROCESSING"
+      :disabled="recordingState === RecordingState.PROCESSING"
+      :pulse="true"
+      @toggle="handleToggle"
+      class="recording-toggle-button"
+    />
 
     <el-button
       v-if="recordingState === RecordingState.IDLE && hasRecordings"
@@ -37,10 +31,12 @@
 <script setup lang="ts">
 import { Microphone, VideoPause, Refresh } from '@element-plus/icons-vue'
 import { RecordingState } from '../../../common/types'
+import ToggleButton from '../common/ToggleButton.vue'
 
 interface Props {
   recordingState: RecordingState
   hasRecordings: boolean
+  size?: 'large' | 'default' | 'small'
 }
 
 interface Emits {
@@ -49,8 +45,19 @@ interface Emits {
   (e: 'retry-recording'): void
 }
 
-defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  size: 'default'
+})
+
 const emit = defineEmits<Emits>()
+
+const handleToggle = (isActive: boolean) => {
+  if (isActive) {
+    emit('start-recording')
+  } else {
+    emit('stop-recording')
+  }
+}
 </script>
 
 <style scoped>
@@ -58,35 +65,11 @@ const emit = defineEmits<Emits>()
   display: flex;
   gap: var(--space-sm);
   justify-content: center;
+  align-items: center;
 }
 
-/* ボタンスタイル */
-.record-button {
-  background: linear-gradient(135deg, var(--success-color), #059669);
-  border: none;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.record-button:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.stop-button {
-  background: linear-gradient(135deg, var(--error-color), #dc2626);
-  border: none;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.stop-button:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.stop-button.pulse {
-  animation: buttonPulse 2s ease-in-out infinite;
+.recording-toggle-button {
+  min-width: 120px;
 }
 
 .retry-button {
@@ -102,16 +85,14 @@ const emit = defineEmits<Emits>()
   box-shadow: var(--shadow-md);
 }
 
-/* アニメーション */
-@keyframes buttonPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
-}
-
 /* レスポンシブデザイン */
 @media (max-width: 768px) {
   .control-buttons {
     justify-content: center;
+  }
+  
+  .recording-toggle-button {
+    min-width: 100px;
   }
 }
 </style> 
