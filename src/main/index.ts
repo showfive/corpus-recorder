@@ -130,6 +130,23 @@ app.on('window-all-closed', () => {
   }
 })
 
+// アプリケーション終了時にtmp.wavファイルを削除
+app.on('before-quit', async () => {
+  try {
+    const recordingDir = store.get('recordingDirectory')
+    const tmpFilePath = path.join(recordingDir, 'tmp.wav')
+    
+    // tmp.wavファイルが存在するかチェック
+    if (fs.existsSync(tmpFilePath)) {
+      await fsPromises.unlink(tmpFilePath)
+      console.log('tmp.wav file deleted on app quit')
+    }
+  } catch (error) {
+    console.error('Failed to delete tmp.wav file on app quit:', error)
+    // エラーがあってもアプリケーション終了は続行
+  }
+})
+
 // IPC通信のハンドラー設定
 
 // ディレクトリ選択

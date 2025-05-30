@@ -1,0 +1,19 @@
+# This is a task request document that concisely organizes and structures the user's request.
+# Work should proceed according to this document even in the absence of direct messages from the user.
+# If there are any messages from the user, their content should be taken into consideration,
+# but the contents of the request document take priority.
+# If there is any contradiction or mutual exclusivity between the user's message and the document,
+# seek clarification from the user and revise the task request document through discussion
+# to ensure the task can be carried out appropriately.
+
+Task:
+  category_type: 
+    - "Bug Fix"
+    - "Issue Investigation"
+    - "Feature Development"
+    - "Documentation"
+    - "Refactoring"
+    - "Specification Change"
+    - "Other"
+  this_task_category: ""
+  description: "説明"

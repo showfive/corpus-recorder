@@ -34,7 +34,7 @@
             @click="retryRecording"
             class="retry-button"
           >
-            やり直し
+            録音し直し
           </el-button>
         </div>
 
@@ -110,6 +110,40 @@
           </div>
         </div>
       </div>
+
+      <!-- 音声再生コントロール（カード下部） -->
+      <div v-if="hasRecordings && latestRecording" class="audio-controls">
+        <el-button-group class="audio-action-group">
+          <el-button
+            v-if="!isPlaying"
+            type="primary"
+            size="default"
+            :icon="CaretRight"
+            @click="playRecording"
+            class="play-btn"
+          >
+            再生
+          </el-button>
+          <el-button
+            v-else
+            type="warning"
+            size="default"
+            :icon="PauseIcon"
+            @click="pauseResumeRecording"
+            class="pause-btn"
+          >
+            一時停止
+          </el-button>
+          <el-button
+            type="info"
+            size="default"
+            @click="stopAudioPlayback"
+            class="stop-btn"
+          >
+            ⏹ 停止
+          </el-button>
+        </el-button-group>
+      </div>
     </div>
   </div>
 </template>
@@ -117,19 +151,21 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Microphone, VideoPause, Refresh } from '@element-plus/icons-vue'
-import { RecordingState } from '../../common/types'
+import { Microphone, VideoPause, Refresh, VideoPlay, VideoPause as PauseIcon, CaretRight } from '@element-plus/icons-vue'
+import { RecordingState, Recording } from '../../common/types'
 import { recordingService } from '../services/recordingService'
 
 interface Props {
   recordingState: RecordingState
   hasRecordings: boolean
+  currentRecordings: Recording[]
 }
 
 interface Emits {
   (e: 'start-recording'): void
   (e: 'stop-recording'): void
   (e: 'retry-recording'): void
+  (e: 'play-recording', recording: Recording): void
 }
 
 const props = defineProps<Props>()
@@ -138,6 +174,18 @@ const emit = defineEmits<Emits>()
 // 録音関連の状態
 const waveformCanvas = ref<HTMLCanvasElement>()
 const recordingTime = ref(0)
+
+// 音声再生関連の状態
+const isPlaying = ref(false)
+const currentAudio = ref<HTMLAudioElement | null>(null)
+const playbackPosition = ref(0)
+const playbackDuration = ref(0)
+
+// 最新の録音を取得
+const latestRecording = computed((): Recording | null => {
+  if (props.currentRecordings.length === 0) return null
+  return props.currentRecordings[props.currentRecordings.length - 1]
+})
 
 // recordingServiceのセットアップ
 onMounted(() => {
@@ -148,6 +196,14 @@ onMounted(() => {
   
   // リサイズイベントリスナーを追加
   window.addEventListener('resize', handleResize)
+  
+  // キャンバスの基本初期化（録音開始前の準備）
+  nextTick(() => {
+    if (waveformCanvas.value) {
+      console.log('Initial canvas setup on mount')
+      setupCanvas()
+    }
+  })
   
   console.log('RecordingControls mounted, canvas will be initialized when recording starts')
 })
@@ -164,6 +220,15 @@ const setupCanvas = () => {
   const container = canvas.parentElement
   if (container) {
     const rect = container.getBoundingClientRect()
+    console.log('Container rect:', rect)
+    
+    // 親要素のサイズが0の場合は少し待ってから再試行
+    if (rect.width === 0 || rect.height === 0) {
+      console.warn('Container size is 0, retrying in 50ms...')
+      setTimeout(() => setupCanvas(), 50)
+      return
+    }
+    
     // 最小サイズを確保
     const width = Math.max(rect.width, 400)
     const height = Math.max(rect.height, 200)
@@ -257,8 +322,8 @@ const stopRecording = () => {
 }
 
 // やり直し
-const retryRecording = () => {
-  emit('retry-recording')
+const retryRecording = async () => {
+  await emit('retry-recording')
 }
 
 // 時間フォーマット
@@ -266,6 +331,105 @@ const formatTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60)
   const secs = seconds % 60
   return `${minutes}:${secs.toString().padStart(2, '0')}`
+}
+
+// 音声再生機能
+const playRecording = async () => {
+  const recording = latestRecording.value
+  if (!recording) return
+
+  try {
+    // 既存の音声を停止（ローカルとグローバル両方）
+    if (currentAudio.value) {
+      currentAudio.value.pause()
+      currentAudio.value = null
+    }
+
+    if (window.currentAudio) {
+      window.currentAudio.pause()
+      window.currentAudio.currentTime = 0
+      window.currentAudio = null
+    }
+
+    const timestamp = Date.now()
+    const audioUrl = `file://${recording.filePath}?t=${timestamp}`
+    
+    const audio = new Audio(audioUrl)
+    currentAudio.value = audio
+    window.currentAudio = audio
+
+    // 音声の時間更新
+    audio.ontimeupdate = () => {
+      playbackPosition.value = audio.currentTime
+      playbackDuration.value = audio.duration || 0
+    }
+
+    // 再生完了時
+    audio.onended = () => {
+      isPlaying.value = false
+      currentAudio.value = null
+      window.currentAudio = null
+      playbackPosition.value = 0
+    }
+
+    // エラーハンドリング
+    audio.onerror = () => {
+      ElMessage.error('音声ファイルが見つかりません。削除されている可能性があります。')
+      isPlaying.value = false
+      currentAudio.value = null
+      window.currentAudio = null
+    }
+
+    // 保存された位置から再生開始
+    audio.onloadedmetadata = () => {
+      if (playbackPosition.value > 0 && playbackPosition.value < audio.duration) {
+        audio.currentTime = playbackPosition.value
+      }
+    }
+
+    await audio.play()
+    isPlaying.value = true
+    ElMessage.success('再生を開始しました')
+
+  } catch (error) {
+    console.error('Failed to play recording:', error)
+    ElMessage.error('音声の再生に失敗しました')
+    isPlaying.value = false
+  }
+}
+
+// 音声一時停止/再開
+const pauseResumeRecording = () => {
+  if (!currentAudio.value) return
+
+  if (isPlaying.value) {
+    currentAudio.value.pause()
+    isPlaying.value = false
+  } else {
+    currentAudio.value.play().then(() => {
+      isPlaying.value = true
+    }).catch((error) => {
+      console.error('Failed to resume playback:', error)
+      ElMessage.error('再生の再開に失敗しました')
+      isPlaying.value = false
+    })
+  }
+}
+
+// 音声停止（先頭に戻る）
+const stopAudioPlayback = () => {
+  if (currentAudio.value) {
+    currentAudio.value.pause()
+    currentAudio.value.currentTime = 0
+    isPlaying.value = false
+    playbackPosition.value = 0
+  }
+  
+  if (window.currentAudio) {
+    window.currentAudio.pause()
+    window.currentAudio.currentTime = 0
+    window.currentAudio = null
+  }
 }
 
 // 録音状態の監視
@@ -289,15 +453,22 @@ watch(() => props.recordingState, (newState, oldState) => {
         // キャンバスサイズを設定
         setupCanvas()
         
-        // 少し待ってから波形描画を開始
-        setTimeout(() => {
-          if (waveformCanvas.value && recordingService.isRecording()) {
-            console.log('Starting waveform drawing')
+        // analyserの準備完了を待ってから波形描画を開始
+        const waitForAnalyser = () => {
+          if (waveformCanvas.value && recordingService.isAnalyserReady() && recordingService.isRecording()) {
+            console.log('Analyser ready, starting waveform drawing')
             recordingService.startWaveformDrawing(waveformCanvas.value)
+          } else if (recordingService.isRecording()) {
+            // まだ準備ができていない場合は50ms後に再試行
+            console.log('Analyser not ready yet, retrying in 50ms...')
+            setTimeout(waitForAnalyser, 50)
           } else {
-            console.warn('Canvas or recording service not available for waveform')
+            console.warn('Recording stopped before analyser was ready')
           }
-        }, 300) // 待機時間を少し延長
+        }
+        
+        // 少し待ってからanalyserの準備確認を開始
+        setTimeout(waitForAnalyser, 100)
       } else {
         console.warn('Waveform canvas not available after nextTick')
       }
@@ -313,9 +484,14 @@ const handleResize = () => {
 }
 
 onUnmounted(() => {
+  // 音声再生のクリーンアップ
+  if (currentAudio.value) {
+    currentAudio.value.pause()
+    currentAudio.value = null
+  }
+  
   window.removeEventListener('resize', handleResize)
   recordingService.stopWaveformDrawing()
-  // recordingServiceのイベントハンドラーをクリア（UI関連のみ）
   recordingService.onTimeUpdate = null
 })
 </script>
@@ -658,5 +834,83 @@ onUnmounted(() => {
   .hint-text {
     font-size: var(--font-size-xs);
   }
+  
+  .audio-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  
+  .audio-buttons {
+    justify-content: center;
+  }
+}
+
+/* 音声再生コントロール */
+.audio-controls {
+  background: linear-gradient(135deg, var(--gray-50), var(--gray-100));
+  border-top: 1px solid var(--gray-200);
+  padding: var(--space-sm) var(--space-xs);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.audio-action-group {
+  display: flex;
+}
+
+.play-btn,
+.pause-btn,
+.stop-btn {
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.play-btn {
+  background: linear-gradient(135deg, var(--success-color), #059669);
+  border: none;
+  color: white;
+}
+
+.play-btn:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-lg);
+}
+
+.pause-btn {
+  background: linear-gradient(135deg, var(--warning-color), #d97706);
+  border: none;
+  color: white;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.pause-btn:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-lg);
+}
+
+.stop-btn {
+  background: linear-gradient(135deg, var(--gray-500), #6b7280);
+  border: none;
+  color: white;
+}
+
+.stop-btn:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-lg);
 }
 </style>

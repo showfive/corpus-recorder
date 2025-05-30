@@ -71,7 +71,7 @@ interface Props {
 const props = defineProps<Props>()
 
 // 波形可視化Composable
-const { startVisualization, stopVisualization } = useAudioVisualization()
+const { startVisualization, stopVisualization, isAnalyserReady } = useAudioVisualization()
 
 // キャンバス要素のref
 const waveformCanvas = ref<HTMLCanvasElement>()
@@ -170,15 +170,24 @@ watch(() => props.recordingState, (newState, oldState) => {
         // キャンバスサイズを設定
         setupCanvas()
         
-        // 少し待ってから波形描画を開始
-        setTimeout(() => {
+        // analyserの準備完了を待ってから波形描画を開始
+        const waitForAnalyser = () => {
           if (waveformCanvas.value) {
-            console.log('Starting waveform drawing')
-            startVisualization(waveformCanvas.value)
+            if (isAnalyserReady.value) {
+              console.log('Analyser ready, starting waveform drawing')
+              startVisualization(waveformCanvas.value)
+            } else {
+              // まだ準備ができていない場合は50ms後に再試行
+              console.log('Analyser not ready yet, retrying in 50ms...')
+              setTimeout(waitForAnalyser, 50)
+            }
           } else {
             console.warn('Canvas not available for waveform')
           }
-        }, 300)
+        }
+        
+        // 少し待ってからanalyserの準備確認を開始
+        setTimeout(waitForAnalyser, 100)
       } else {
         console.warn('Waveform canvas not available after nextTick')
       }

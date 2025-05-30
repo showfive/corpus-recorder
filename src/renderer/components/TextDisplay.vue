@@ -3,7 +3,6 @@
     <div class="text-card" v-if="props.currentText">
       <div class="card-header">
         <div class="header-left">
-          <h2 class="card-title">📖 読み上げテキスト</h2>
           <div class="header-tags">
             <el-tag v-if="props.fileFormat" type="info" size="small" class="format-tag">
               {{ props.fileFormat }}
@@ -99,7 +98,7 @@
     <div class="text-card empty-state" v-else>
       <div class="card-header">
         <div class="header-left">
-          <h2 class="card-title">📖 読み上げテキスト</h2>
+          <!-- 空の状態ではヘッダーにボタンを表示しない -->
         </div>
       </div>
       <div class="card-content">
@@ -112,6 +111,7 @@
           >
             📄 テキストファイルを開く
           </el-button>
+          <p class="empty-message">テキストファイルを開いて録音を開始してください</p>
         </div>
       </div>
     </div>
@@ -204,14 +204,15 @@ function generateRubyHtml(rubyText: RubySegment[] | undefined): string {
 
 .header-left {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-md);
 }
 
 .header-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
   gap: var(--space-sm);
 }
 
@@ -231,16 +232,6 @@ function generateRubyHtml(rubyText: RubySegment[] | undefined): string {
   color: white;
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
-}
-
-.card-title {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  color: var(--gray-800);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
 }
 
 .header-tags {
@@ -401,6 +392,12 @@ function generateRubyHtml(rubyText: RubySegment[] | undefined): string {
   text-align: center;
   gap: var(--space-md);
   min-height: 200px;
+}
+
+.empty-message {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--gray-700);
 }
 
 .large-load-button {

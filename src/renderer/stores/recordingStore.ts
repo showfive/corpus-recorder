@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   CorpusText, 
   Recording, 
@@ -12,6 +12,13 @@ import {
 } from '../../common/types'
 import { electronService } from '../services/electronService'
 import { recordingService } from '../services/recordingService'
+
+// 型定義をファイル先頭付近に追加
+declare global {
+  interface Window {
+    currentAudio: HTMLAudioElement | null
+  }
+}
 
 export const useRecordingStore = defineStore('recording', () => {  // === 状態 ===
   const recordingDirectory = ref<string>('')
@@ -154,8 +161,8 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
     }
 
     try {
-      recordingState.value = RecordingState.RECORDING
       await recordingService.startRecording()
+      recordingState.value = RecordingState.RECORDING
     } catch (error) {
       console.error('Failed to start recording:', error)
       recordingState.value = RecordingState.IDLE
@@ -178,17 +185,32 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
    */
   const completeRecording = async (data: { arrayBuffer: ArrayBuffer; duration: number }): Promise<void> => {
     const currentText = currentTextObject.value
-    if (!currentText) {
-      ElMessage.error('録音対象のテキストが選択されていません')
-      recordingState.value = RecordingState.IDLE
-      recordingService.resetState()
-      return
-    }    try {
-      const takeNumber = getNextTakeNumber(currentText.id)
-      const fileName = generateFileName(currentText, takeNumber)
+    
+    try {
+      let textId: string
+      let fileName: string
+      let text: string
+      let takeNumber: number
+      
+      if (currentText) {
+        // テキストが選択されている場合の処理
+        textId = currentText.id
+        takeNumber = getNextTakeNumber(currentText.id)
+        fileName = generateFileName(currentText, takeNumber)
+        text = currentText.text
+      } else {
+        // テキストが選択されていない場合の処理
+        const timestamp = Date.now()
+        textId = `anycorpus_${timestamp}`
+        takeNumber = 1
+        
+        // tmp.wavというファイル名を使用
+        fileName = `tmp.wav`
+        text = '音声録音（テキスト未選択）'
+      }
       
       const metadata: AudioFileMetadata = {
-        text: currentText.text,
+        text,
         takeNumber,
         fileName
       }
@@ -197,14 +219,14 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       
       if (result.success && result.filePath) {
         const recording: Recording = {
-          id: `${currentText.id}_${takeNumber}`,
-          textId: currentText.id,
+          id: `${textId}_${takeNumber}`,
+          textId,
           fileName,
           filePath: result.filePath,
           duration: data.duration,
           createdAt: new Date(),
           takeNumber,
-          text: currentText.text
+          text
         }
         
         recordings.value.push(recording)
@@ -223,9 +245,65 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
   /**
    * 録音をやり直す
    */
-  const retryRecording = (): void => {
-    recordingState.value = RecordingState.IDLE
-    recordingService.retryRecording()
+  const retryRecording = async (): Promise<void> => {
+    try {
+      const currentText = currentTextObject.value
+      if (!currentText) {
+        ElMessage.warning('対象のテキストが選択されていません')
+        return
+      }
+
+      // 現在録音中の場合は何もしない
+      if (recordingState.value === RecordingState.RECORDING) {
+        return
+      }
+
+      // 現在のテキストに関連する録音がある場合はサイレントに削除
+      const currentTextRecordings = recordings.value.filter(r => r.textId === currentText.id)
+      if (currentTextRecordings.length > 0) {
+        // 現在のテキストの全録音を削除（サイレント）
+        for (const recording of currentTextRecordings) {
+          // 再生中の音声を停止
+          if (window.currentAudio && window.currentAudio.src.includes(recording.filePath)) {
+            window.currentAudio.pause()
+            window.currentAudio.currentTime = 0
+            window.currentAudio = null
+          }
+
+          // ファイルを削除
+          const result = await electronService.deleteAudioFile(recording.filePath)
+          if (result.success) {
+            // メモリ上のリストからも削除
+            const index = recordings.value.findIndex(r => r.id === recording.id)
+            if (index > -1) {
+              recordings.value.splice(index, 1)
+            }
+          } else {
+            console.warn(`Failed to delete recording file: ${recording.filePath}`, result.error)
+            // ファイル削除に失敗してもメモリ上のリストからは削除（ファイルが既に存在しない可能性）
+            const index = recordings.value.findIndex(r => r.id === recording.id)
+            if (index > -1) {
+              recordings.value.splice(index, 1)
+            }
+          }
+        }
+      }
+
+      // 録音状態をリセットしてから録音開始
+      recordingState.value = RecordingState.IDLE
+      recordingService.retryRecording()
+      
+      // 即座に録音を開始
+      await startRecording()
+      
+    } catch (error) {
+      console.error('Failed to retry recording:', error)
+      ElMessage.error('やり直し処理に失敗しました')
+      
+      // エラーが発生しても状態はリセット
+      recordingState.value = RecordingState.IDLE
+      recordingService.retryRecording()
+    }
   }
 
   /**
@@ -249,6 +327,13 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
    */
   const deleteRecording = async (recording: Recording): Promise<void> => {
     try {
+      // 削除対象の音声が再生中の場合は停止
+      if (window.currentAudio && window.currentAudio.src.includes(recording.filePath)) {
+        window.currentAudio.pause()
+        window.currentAudio.currentTime = 0
+        window.currentAudio = null
+      }
+
       const result = await electronService.deleteAudioFile(recording.filePath)
       
       if (result.success) {
@@ -264,7 +349,8 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
       console.error('Failed to delete recording:', error)
       ElMessage.error('録音の削除に失敗しました')
     }
-  }  /**
+  }
+  /**
    * 次のテイク番号を取得
    */
   const getNextTakeNumber = (textId: string): number => {
@@ -314,9 +400,54 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
   /**
    * 録音の再生
    */
-  const playRecording = (recording: Recording): void => {
-    const audio = new Audio(`file://${recording.filePath}`)
-    audio.play()
+  const playRecording = async (recording: Recording): Promise<void> => {
+    try {
+      // 既存のAudioオブジェクトをクリーンアップ
+      if (window.currentAudio) {
+        window.currentAudio.pause()
+        window.currentAudio.currentTime = 0
+        window.currentAudio = null
+      }
+
+      // キャッシュ無効化のためタイムスタンプを付加
+      const timestamp = Date.now()
+      const audioUrl = `file://${recording.filePath}?t=${timestamp}`
+      
+      const audio = new Audio(audioUrl)
+      
+      // グローバルな参照を保持して管理
+      window.currentAudio = audio
+      
+      // エラーハンドリング
+      audio.onerror = () => {
+        ElMessage.error('音声ファイルが見つかりません。削除されている可能性があります。')
+        window.currentAudio = null
+        
+        // メモリ上のrecordingsリストからも削除
+        const index = recordings.value.findIndex(r => r.id === recording.id)
+        if (index > -1) {
+          recordings.value.splice(index, 1)
+        }
+      }
+      
+      // 再生完了時のクリーンアップ
+      audio.onended = () => {
+        window.currentAudio = null
+      }
+      
+      await audio.play()
+      ElMessage.success('再生を開始しました')
+      
+    } catch (error) {
+      console.error('Failed to play recording:', error)
+      ElMessage.error('音声の再生に失敗しました')
+      
+      // エラー時もメモリ上のリストから削除
+      const index = recordings.value.findIndex(r => r.id === recording.id)
+      if (index > -1) {
+        recordings.value.splice(index, 1)
+      }
+    }
   }
 
   /**
@@ -333,6 +464,13 @@ export const useRecordingStore = defineStore('recording', () => {  // === 状態
    * ストアを初期化する
    */
   const initialize = async (): Promise<void> => {
+    // 既存のAudioオブジェクトをクリーンアップ
+    if (window.currentAudio) {
+      window.currentAudio.pause()
+      window.currentAudio.currentTime = 0
+      window.currentAudio = null
+    }
+
     // recordingServiceのイベントハンドラーを設定
     recordingService.onRecordingComplete = async (data) => {
       await completeRecording(data)

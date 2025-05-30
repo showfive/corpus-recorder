@@ -1,4 +1,4 @@
-import { ref, onUnmounted, readonly } from 'vue'
+import { ref, onUnmounted, readonly, computed } from 'vue'
 import { container } from '../../common/di/container'
 import { RecordingService } from '../services/recordingService'
 
@@ -9,6 +9,9 @@ export function useAudioVisualization() {
 
   // サービスインスタンス
   const recordingService = container.resolve<RecordingService>('recordingService')
+
+  // analyserの準備状態を取得
+  const isAnalyserReady = computed(() => recordingService.isAnalyserReady())
 
   const startVisualization = (canvasElement: HTMLCanvasElement) => {
     if (!recordingService.isAnalyserReady()) {
@@ -84,6 +87,7 @@ export function useAudioVisualization() {
     // 状態
     canvas: readonly(canvas),
     isVisualizationActive: readonly(isVisualizationActive),
+    isAnalyserReady: readonly(isAnalyserReady),
     
     // メソッド
     startVisualization,

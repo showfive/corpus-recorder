@@ -48,9 +48,11 @@
           <RecordingControls
             :recording-state="recordingStore.recordingState"
             :has-recordings="recordingStore.currentRecordings.length > 0"
+            :current-recordings="recordingStore.currentRecordings"
             @start-recording="recordingStore.startRecording"
             @stop-recording="recordingStore.stopRecording"
             @retry-recording="recordingStore.retryRecording"
+            @play-recording="recordingStore.playRecording"
           />
 
           <RecordingsList
@@ -65,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
 import TextDisplay from '../components/TextDisplay.vue'
@@ -81,6 +83,16 @@ const showSettings = ref(false)
 // 初期化
 onMounted(async () => {
   await recordingStore.initialize()
+})
+
+// クリーンアップ
+onUnmounted(() => {
+  // 音声再生のクリーンアップ
+  if (window.currentAudio) {
+    window.currentAudio.pause()
+    window.currentAudio.currentTime = 0
+    window.currentAudio = null
+  }
 })
 </script>
 

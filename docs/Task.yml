@@ -1,0 +1,31 @@
+# This is a task request document that concisely organizes and structures the user's request.
+# Work should proceed according to this document even in the absence of direct messages from the user.
+# If there are any messages from the user, their content should be taken into consideration,
+# but the contents of the request document take priority.
+# If there is any contradiction or mutual exclusivity between the user's message and the document,
+# seek clarification from the user and revise the task request document through discussion
+# to ensure the task can be carried out appropriately.
+
+Task:
+  category_types: 
+    - "Bug Fix"
+    - "Issue Fix"
+    - "Issue Investigation"
+    - "Feature Development"
+    - "Documentation"
+    - "Refactoring"
+    - "Planning"
+    - "Analysis"
+    - "Specification Change"
+    - "Other"
+  this_task_category: "Specification Change"
+  description: |
+    読み上げテキストカードのデザインを改善する。
+    - カードタイトル表示は削除
+    - "テキストを開く"ボタンはプログレスバーと縦並びになっているが、横並びにして左に配置
+    - ヘッダ内の要素は1行で表示
+  priority: "High"
+  due_date: "2025-05-30"
+  tags:
+    - "Audio"
+    - "Bug"

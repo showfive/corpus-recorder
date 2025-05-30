@@ -75,7 +75,7 @@ const handleStopRecording = () => {
   emit('stop-recording')
 }
 
-const handleRetryRecording = () => {
+const handleRetryRecording = async () => {
   emit('retry-recording')
 }
 
